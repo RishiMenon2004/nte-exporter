@@ -19,15 +19,17 @@ game whose asset tables evolve over time.
 
 ### GitHub Actions
 
-Run **Update mappings** from the repository's Actions tab. The optional
-`source_ref` input accepts an NTE_Assets branch, tag, or commit and defaults to
-`main`.
+Run **Update mappings** from the repository's Actions tab. **Use workflow
+from** selects the exporter branch whose updater is run and the target branch
+for the resulting pull request. The `source_ref` input separately selects an
+NTE_Assets branch, tag, or commit and defaults to `main`.
 
 The workflow rebuilds the mappings, runs the complete test suite, uploads the
 JSON review report, and opens a pull request from
-`dev/automated-mapping-update`. Running it again updates the same open pull
-request. If the authoritative snapshot has not changed, it reports zero changes
-and does not create a commit or pull request.
+`dev/automated-mapping-update-<selected-branch>`. Running it again for the same
+selected branch updates that branch's open pull request. If the authoritative
+snapshot has not changed, it reports zero changes and does not create a commit
+or pull request.
 
 The repository setting **Allow GitHub Actions to create and approve pull
 requests** must be enabled for automatic pull-request creation. The workflow
