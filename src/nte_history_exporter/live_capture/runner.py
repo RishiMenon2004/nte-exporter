@@ -111,12 +111,27 @@ def run_live_capture(
                             reassemble_tcp_segments(tcp_segments[flow])
                         )
                         if achievement_records:
-                            completed = [record for record in achievement_records if record.completed]
+                            in_game = [
+                                record
+                                for record in achievement_records
+                                if not record.achievement_id.casefold().startswith(
+                                    "playstation_"
+                                )
+                            ]
+                            playstation = [
+                                record
+                                for record in achievement_records
+                                if record.achievement_id.casefold().startswith(
+                                    "playstation_"
+                                )
+                            ]
                             console.print_achievements_captured(
-                                len(completed),
+                                sum(record.completed for record in in_game),
+                                sum(record.status == "in_progress" for record in in_game),
+                                sum(record.completed for record in playstation),
                                 sum(
-                                    record.achievement_id.lower().startswith("playstation_")
-                                    for record in completed
+                                    record.status == "in_progress"
+                                    for record in playstation
                                 ),
                             )
                 pair_count_before = len(session.pairs)

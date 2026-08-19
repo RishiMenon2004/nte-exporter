@@ -1,4 +1,4 @@
-# Reward mapping updates
+# Mapping updates
 
 `tools/update_mappings.py` rebuilds `arcs.json`, `characters.json`,
 `items.json`, and `achievements.json` directly from the current
@@ -19,7 +19,7 @@ game whose asset tables evolve over time.
 
 ### GitHub Actions
 
-Run **Update reward mappings** from the repository's Actions tab. The optional
+Run **Update mappings** from the repository's Actions tab. The optional
 `source_ref` input accepts an NTE_Assets branch, tag, or commit and defaults to
 `main`.
 
@@ -68,7 +68,7 @@ python -m pytest -q
 ```
 
 For CI, `--check` exits with status 1 whenever the generated snapshot differs
-from the committed reward mappings. It still writes the staged artifacts.
+from the committed mappings. It still writes the staged artifacts.
 
 ## Source rules
 
@@ -100,7 +100,7 @@ reads or writes the permanent, limited, beginner, or Arc pool mapping files.
 Banner IDs, timestamps, record ordering, format version, and all UID inputs are
 therefore unchanged by mapping synchronization.
 
-Reward IDs and display metadata may change or disappear when the authoritative
-NTE_Assets snapshot changes. Existing exported history files remain unchanged;
-new exports describe rewards using the current asset snapshot. UID stability is
-independent of reward display mappings.
+Reward and achievement IDs or display metadata may change or disappear when
+the authoritative NTE_Assets snapshot changes. Existing exports remain
+unchanged; new exports use the current asset snapshot. UID stability is
+independent of display mappings.

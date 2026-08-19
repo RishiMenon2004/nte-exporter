@@ -94,13 +94,11 @@ def build_achievement_export_json(
             "total_achievements": 0,
             "completed_achievements": 0,
             "in_progress_achievements": 0,
-            "not_started_achievements": 0,
         },
         "playstation": {
             "total_achievements": 0,
             "completed_achievements": 0,
             "in_progress_achievements": 0,
-            "not_started_achievements": 0,
         },
     }
     for achievement in achievement_records:
@@ -110,10 +108,8 @@ def build_achievement_export_json(
         summary["total_achievements"] += 1
         if achievement.completed:
             summary["completed_achievements"] += 1
-        elif achievement.progress:
-            summary["in_progress_achievements"] += 1
         else:
-            summary["not_started_achievements"] += 1
+            summary["in_progress_achievements"] += 1
         category, separator, _number = achievement_id.partition("_")
         category_key = category.casefold() if separator else "uncategorized"
         record = {

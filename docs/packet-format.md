@@ -1,6 +1,21 @@
 # Packet Format Notes
 
-This prototype supports separate Monopoly, Arc/Gashapon, and Mystery Box history decoders.
+This prototype supports separate Monopoly, Arc/Gashapon, Mystery Box history,
+and achievement decoders.
+
+## Achievements
+
+The account's achievement component arrives in an inbound TCP game-data block
+during login. The block is LZ4-decoded and contains `AchievementRecord` entries.
+Each record provides an achievement ID, an unsigned numeric progress value, and
+a .NET completion timestamp. A non-zero timestamp marks a completed record.
+Every observed record without completion ticks is treated as in progress;
+compound achievements can have server-side checklist progress while exposing a
+numeric value of zero.
+
+Only records present in the network response are exported. Display metadata is
+looked up case-insensitively in `mappings/achievements.json`, because captured
+and asset-table ID casing can differ. Missing metadata never prevents export.
 
 ## Decoder strategy
 

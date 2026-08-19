@@ -28,7 +28,7 @@ class AchievementPacketTests(unittest.TestCase):
         self.assertEqual(records[0].achievement_id, "Battle_30")
         self.assertTrue(records[0].completed)
         self.assertEqual(records[1].achievement_id, "Playstation_035")
-        self.assertEqual(records[1].status, "not_started")
+        self.assertEqual(records[1].status, "in_progress")
 
     def test_reassembles_tcp_data(self):
         self.assertEqual(

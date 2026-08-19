@@ -1,11 +1,16 @@
 from tests.support import *  # noqa: F401,F403
 from nte_history_exporter import __version__
+from nte_history_exporter.constants import EXPORTER_VERSION
 from nte_history_exporter.decoder.achievement import AchievementRecord
 from nte_history_exporter.export.json_export import build_achievement_export_json
 from nte_history_exporter.live_capture.runner import _achievement_path
 
 
 class ExportContractTests(unittest.TestCase):
+    def test_public_version_references_match(self):
+        self.assertEqual(__version__, "0.3.0")
+        self.assertEqual(EXPORTER_VERSION, __version__)
+
     def test_sanitized_export_omits_raw_packet_fields(self):
         annotated = annotate_groups(fixture_session().build_rows("permanent"))
         export = build_export_json(annotated, [])
@@ -153,13 +158,11 @@ class ExportContractTests(unittest.TestCase):
                     "total_achievements": 2,
                     "completed_achievements": 1,
                     "in_progress_achievements": 1,
-                    "not_started_achievements": 0,
                 },
                 "playstation": {
                     "total_achievements": 1,
                     "completed_achievements": 0,
-                    "in_progress_achievements": 0,
-                    "not_started_achievements": 1,
+                    "in_progress_achievements": 1,
                 },
             },
         )

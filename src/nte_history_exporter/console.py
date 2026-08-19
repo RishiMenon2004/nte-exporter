@@ -94,7 +94,7 @@ def print_live_instructions(local_ip: str, backend: str = "windows_raw", detail:
     print(style("    You can capture more than one board in the same session.", DIM))
     print()
     print(style("  Achievements", BOLD))
-    print("    Your completed achievements are captured automatically when")
+    print("    Your tracked achievements are captured automatically when")
     print("    you log in after following the step above.")
     print()
     print(style("  Ready - use the game, then press any key here when finished.", BOLD, GREEN))
@@ -106,12 +106,26 @@ def print_page_captured(label: str, page: int | None, *, recaptured: bool = Fals
     print(style("  + ", GREEN, BOLD) + label + style(f"  {action} {page}", DIM))
 
 
-def print_achievements_captured(total: int, playstation: int) -> None:
-    visible = total - playstation
+def print_achievements_captured(
+    in_game_completed: int,
+    in_game_in_progress: int,
+    playstation_completed: int,
+    playstation_in_progress: int,
+) -> None:
+    print(style("  + ", GREEN, BOLD) + "Achievements captured")
     print(
-        style("  + ", GREEN, BOLD)
-        + "Achievements"
-        + style(f"  captured {visible} visible + {playstation} PlayStation", DIM)
+        style(
+            f"      In-game      {in_game_completed} completed, "
+            f"{in_game_in_progress} in progress",
+            DIM,
+        )
+    )
+    print(
+        style(
+            f"      PlayStation  {playstation_completed} completed, "
+            f"{playstation_in_progress} in progress",
+            DIM,
+        )
     )
 
 
@@ -184,7 +198,7 @@ def print_problem(text: str) -> None:
 def print_update_available(current_version: str, latest_version: str, release_url: str) -> None:
     print()
     print(style(f"  Update available: v{current_version} -> {latest_version}", YELLOW, BOLD))
-    print(style("  Some banner/reward mappings may be incomplete in this version.", YELLOW))
+    print(style("  Some reward or achievement mappings may be incomplete in this version.", YELLOW))
     print(style("  Updating is recommended for the most accurate export labels.", YELLOW))
     print(style(f"  Download when ready: {release_url}", YELLOW))
 

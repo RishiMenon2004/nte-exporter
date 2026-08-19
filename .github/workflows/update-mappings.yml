@@ -1,4 +1,4 @@
-name: Update reward mappings
+name: Update mappings
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: update-reward-mappings
+  group: update-mappings
   cancel-in-progress: false
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
       - name: Install project
         run: python -m pip install -e .
 
-      - name: Rebuild reward mappings
+      - name: Rebuild mappings
         run: python tools/update_mappings.py --source-ref "$NTE_ASSETS_REF" --apply
 
       - name: Run tests
@@ -108,7 +108,7 @@ jobs:
               f"- {changes['additions']} additions\n"
               f"- {changes['updates']} updates\n"
               f"- {changes['deletions']} deletions\n\n"
-              "The workflow rebuilt all reward mappings, resolved English names through "
+              "The workflow rebuilt all reward and achievement mappings, resolved English text through "
               "`Localization/en/game.json`, and passed the complete test suite. Pool mapping "
               "files and UID inputs were not changed.\n\n"
               f"[Workflow run]({os.environ['RUN_URL']})\n"
@@ -125,12 +125,12 @@ jobs:
 
           if [ -n "$pr_number" ]; then
             gh pr edit "$pr_number" \
-              --title "chore: update reward mappings from NTE_Assets" \
+              --title "chore: update mappings from NTE_Assets" \
               --body-file build/mapping-update/pull-request-body.md
           else
             gh pr create \
               --head "$AUTOMATION_BRANCH" \
               --base "$BASE_BRANCH" \
-              --title "chore: update reward mappings from NTE_Assets" \
+              --title "chore: update mappings from NTE_Assets" \
               --body-file build/mapping-update/pull-request-body.md
           fi

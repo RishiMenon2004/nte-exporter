@@ -27,7 +27,10 @@ class AchievementRecord:
     def status(self) -> str:
         if self.completed:
             return "completed"
-        return "in_progress" if self.progress else "not_started"
+        # Presence in the server response means the achievement has tracked
+        # state. Compound achievements can have hidden checklist progress while
+        # exposing a numeric progress value of zero to the client.
+        return "in_progress"
 
     @property
     def completed_at(self) -> str | None:
