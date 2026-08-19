@@ -18,5 +18,9 @@
   },
   "ST_Appearance": {
     "glider_2000": "Inventory Glider"
+  },
+  "ST_VehicleData": {
+    "vehicle_1010_livery": "Tiger Incoming! - Livery",
+    "vehicle_placeholder_livery": "Sandy Mirage - Livery"
   }
 }

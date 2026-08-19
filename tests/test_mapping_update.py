@@ -55,7 +55,7 @@ class MappingUpdateTests(unittest.TestCase):
         self.assertNotIn("fork_retired", result.mappings["arcs.json"])
         self.assertNotIn("OldTicket", result.mappings["items.json"])
         self.assertNotEqual(result.mappings["characters.json"]["1003"], current["characters.json"]["1003"])
-        self.assertEqual(result.report["changes"], {"additions": 5, "updates": 2, "deletions": 3})
+        self.assertEqual(result.report["changes"], {"additions": 6, "updates": 2, "deletions": 3})
         self.assertIs(result.report["safety"]["authoritative_snapshot"], True)
         self.assertIs(result.report["safety"]["deletions_allowed"], True)
         self.assertIs(result.report["safety"]["uid_inputs_touched"], False)
@@ -83,7 +83,11 @@ class MappingUpdateTests(unittest.TestCase):
         self.assertNotIn("DIceNormal", result.mappings["items.json"])
         self.assertNotIn("UnusedItem", result.mappings["items.json"])
         self.assertFalse(any(key.startswith("Characterawaken_") for key in result.mappings["items.json"]))
-        self.assertFalse(any(key.startswith("Fashion_vehicle_") for key in result.mappings["items.json"]))
+        self.assertEqual(
+            result.mappings["items.json"]["Fashion_vehicle_1010_V008"],
+            {"type": "cosmetic", "name": "Tiger Incoming! - Livery", "rank": "S"},
+        )
+        self.assertNotIn("Fashion_vehicle_1072_V006", result.mappings["items.json"])
 
     def test_future_mystery_box_pool_is_discovered_without_hard_coded_event_id(self):
         assets = load_assets(assets_root=SAMPLE_ASSETS)
@@ -113,7 +117,7 @@ class MappingUpdateTests(unittest.TestCase):
         tables["localization"]["ST_Item"].update(
             {"wow_ticket": "Wowzers Ticket", "wow_frame": "Wowzers Frame"}
         )
-        tables["localization"]["ST_VehicleData"] = {"vehicle_wow": "Wowmobile"}
+        tables["localization"]["ST_VehicleData"]["vehicle_wow"] = "Wowmobile"
 
         result = build_mapping_update(sample_current(), replace(assets, tables=tables))
 

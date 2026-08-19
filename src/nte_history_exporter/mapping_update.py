@@ -324,9 +324,16 @@ def _build_item_mapping(
             candidate_id.isdigit()
             or folded.startswith("fork_")
             or folded.startswith("characterawaken_")
-            or folded.startswith("fashion_vehicle_")
         ):
             continue
+        if folded.startswith("fashion_vehicle_"):
+            illustration = tables["illustrations"].get(candidate_id)
+            if illustration is not None:
+                vehicle_meta = _normalise_vehicle_livery(candidate_id, illustration, translations)
+                if vehicle_meta is None:
+                    continue
+                result[candidate_id] = vehicle_meta
+                continue
         sources = (inventory, capital, appearances, vehicle_inventory)
         match = next((source.get(folded) for source in sources if folded in source), None)
         if match is None:
@@ -341,6 +348,31 @@ def _build_item_mapping(
             "rank": meta["rank"],
         }
     return dict(sorted(result.items(), key=lambda pair: (pair[0].casefold(), pair[0])))
+
+
+def _normalise_vehicle_livery(
+    item_id: str,
+    row: Any,
+    translations: dict[str, list[tuple[str, str]]],
+) -> dict[str, str] | None:
+    """Resolve a livery from its illustration, ignoring mismatched placeholder rows."""
+    if not isinstance(row, dict):
+        raise MappingUpdateError(f"NTE_Assets row {item_id} must be an object")
+    head_icon = row.get("HeadIcon")
+    asset_path = head_icon.get("AssetPathName") if isinstance(head_icon, dict) else None
+    if not isinstance(asset_path, str) or not asset_path:
+        raise MappingUpdateError(f"NTE_Assets vehicle livery row {item_id} has no HeadIcon")
+    icon_id = asset_path.rsplit("/", 1)[-1].split(".", 1)[0]
+    if icon_id.casefold() != item_id.casefold():
+        return None
+    item_name = row.get("ItemName_Override")
+    if not isinstance(item_name, dict):
+        raise MappingUpdateError(f"NTE_Assets vehicle livery row {item_id} has no ItemName_Override")
+    return {
+        "type": "cosmetic",
+        "name": _translate_name(item_id, item_name, translations).strip(),
+        "rank": "S",
+    }
 
 
 def _build_achievement_mapping(

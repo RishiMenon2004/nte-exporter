@@ -80,6 +80,9 @@ from the committed mappings. It still writes the staged artifacts.
 - Other pull rewards are selected by `GachaIllustrate` and resolved to the
   inventory tables for quality and localization keys. Appearance-table IDs
   provide canonical casing for glider rewards.
+- Vehicle liveries are resolved from their illustration name and icon. Rows
+  whose icon identifies a different reward are treated as unreleased upstream
+  placeholders and skipped until the assets are corrected.
 - Mystery Box rewards are selected from every row in
   `DT_GashaponLotteryGlobal`. No event IDs are hard-coded, so future rotations
   are included automatically. Rewards resolve through the inventory, capital,
@@ -89,8 +92,8 @@ from the committed mappings. It still writes the staged artifacts.
   currencies, are categorized as items.
 - Names are resolved strictly through `Localization/en/game.json`. A missing or
   ambiguous key fails the update instead of falling back to a DT value.
-- Character-awakening and character-vehicle illustration entries are not
-  independent pull rewards and are excluded.
+- Character-awakening illustration entries are not independent pull rewards
+  and are excluded.
 - Orange, purple, and blue item qualities map to `S`, `A`, and `B`.
 
 ## UID compatibility boundary
