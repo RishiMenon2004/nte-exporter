@@ -101,6 +101,8 @@ Decoded fields:
   Arc/Gashapon history uses the same scheme at `ASCII * 2`.
 - The decoder decodes the key to its id string and looks up display metadata
   in `mappings/arcs.json`, `mappings/characters.json`, and `mappings/items.json`.
+  Lookups are case-insensitive across Monopoly, Arc, and Mystery Box decoders;
+  known IDs are emitted using mapping-canonical casing.
   Achievement display metadata is generated separately in
   `mappings/achievements.json`.
   Unknown rewards still export their decoded id with empty name/rank.

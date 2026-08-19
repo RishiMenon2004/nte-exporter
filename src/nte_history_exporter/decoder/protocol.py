@@ -15,7 +15,7 @@ from nte_history_exporter.constants import (
     TIMESTAMP_TICKS_PER_SECOND,
     VALID_DICE_FIELDS,
 )
-from nte_history_exporter.mappings import REWARDS_BY_ID
+from nte_history_exporter.mappings import REWARDS_BY_CASEFOLD
 from nte_history_exporter.decoder.structured_protocol import (
     StructuredRecord,
     parse_structured_records,
@@ -61,11 +61,12 @@ def decode_reward_key(raw: bytes) -> str:
 def infer_reward_type(reward_id: str) -> str:
     if not reward_id:
         return ""
-    if reward_id.startswith("fork_"):
+    folded = reward_id.casefold()
+    if folded.startswith("fork_"):
         return "arc"
     if reward_id.isdigit():
         return "character"
-    if reward_id.startswith("Fashion_"):
+    if folded.startswith("fashion_"):
         return "cosmetic"
     return "item"
 
@@ -165,7 +166,7 @@ def classify_result_type(
 ) -> tuple[str, int | None]:
     if dice is None or dice_offset is None:
         return "unknown", None
-    if reward_id == "Dice_ticket_01" and WARP_PIECE_CHASE_PATTERN in chunk_without_marker:
+    if reward_id.casefold() == "dice_ticket_01" and WARP_PIECE_CHASE_PATTERN in chunk_without_marker:
         return "chase_reward", -4
     if dice == 0:
         return "points_gift", 0
@@ -182,13 +183,14 @@ def classify_result_type(
 
 
 def guess_quantity(chunk_hex: str, reward_id: str, result_type: str | None = None) -> int | None:
-    if reward_id == "Dice_ticket_01":
+    folded = reward_id.casefold()
+    if folded == "dice_ticket_01":
         if result_type == "chase_reward":
             return 30
         return 4
-    if reward_id == "DiceNormal":
+    if folded == "dicenormal":
         return 1
-    if reward_id == "Dice_ticket_02":
+    if folded == "dice_ticket_02":
         if "c8b0d4c0" in chunk_hex:
             return 50
         if "c8b0ccc0" in chunk_hex:
@@ -266,7 +268,8 @@ def _decode_aligned_response_records(response_content: bytes) -> list[dict[str, 
         elif result_type == "chase_reward":
             dice = -4
             dice_raw = -4
-        reward = REWARDS_BY_ID.get(reward_id, {})
+        reward = _reward_metadata(reward_id)
+        canonical_reward_id = reward.get("id", reward_id)
         timestamp_raw = response_content[marker_offset + len(marker) : marker_offset + len(marker) + 8]
         timestamp_ticks, timestamp_unix, timestamp_decoded = decode_history_timestamp(timestamp_raw)
         chunk_hex = chunk.hex()
@@ -288,7 +291,7 @@ def _decode_aligned_response_records(response_content: bytes) -> list[dict[str, 
                 "dice_offset_in_record": dice_offset,
                 "reward_key_hex": key_hex,
                 "reward_type": reward.get("type") or infer_reward_type(reward_id),
-                "reward_id": reward_id,
+                "reward_id": canonical_reward_id,
                 "reward_name": reward.get("name", ""),
                 "reward_rank": reward.get("rank"),
                 "quantity": guess_quantity(chunk_hex, reward_id, result_type),
@@ -335,8 +338,8 @@ def _enrich_heuristic_rows(
         return heuristic_rows
     for heuristic, structured in zip(heuristic_rows, structured_rows):
         if not heuristic.get("reward_id"):
-            heuristic["reward_id"] = structured.item_id
             reward = _reward_metadata(structured.item_id)
+            heuristic["reward_id"] = reward.get("id", structured.item_id)
             heuristic["reward_type"] = reward.get("type") or infer_reward_type(structured.item_id)
             heuristic["reward_name"] = reward.get("name", "")
             heuristic["reward_rank"] = reward.get("rank")
@@ -361,11 +364,7 @@ def _enrich_heuristic_rows(
 
 
 def _reward_metadata(reward_id: str) -> dict[str, Any]:
-    direct = REWARDS_BY_ID.get(reward_id)
-    if direct is not None:
-        return direct
-    folded = reward_id.casefold()
-    return next((meta for item_id, meta in REWARDS_BY_ID.items() if item_id.casefold() == folded), {})
+    return REWARDS_BY_CASEFOLD.get(reward_id.casefold(), {})
 
 
 def structured_monopoly_rows(structured_rows: list[StructuredRecord]) -> list[dict[str, Any]]:
@@ -373,6 +372,7 @@ def structured_monopoly_rows(structured_rows: list[StructuredRecord]) -> list[di
     for row_index, structured in enumerate(structured_rows, start=1):
         dice, dice_raw, result_type, result_source = _structured_result(structured.roll_points_raw)
         reward = _reward_metadata(structured.item_id)
+        canonical_reward_id = reward.get("id", structured.item_id)
         rows.append(
             {
                 "row": row_index,
@@ -391,7 +391,7 @@ def structured_monopoly_rows(structured_rows: list[StructuredRecord]) -> list[di
                 "dice_offset_in_record": None,
                 "reward_key_hex": "",
                 "reward_type": reward.get("type") or infer_reward_type(structured.item_id),
-                "reward_id": structured.item_id,
+                "reward_id": canonical_reward_id,
                 "reward_name": reward.get("name", ""),
                 "reward_rank": reward.get("rank"),
                 "quantity": structured.count,

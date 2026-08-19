@@ -84,6 +84,12 @@ Current stable pool IDs:
 Avoid using `banner.name`, `reward_name`, `reward_type` or `reward_rank` as primary IDs. They
 are useful display fields, but may change when mapping files are updated.
 
+Known `reward_id` values are matched case-insensitively and emitted using the
+canonical casing from the bundled mapping. This prevents packet/asset casing
+differences from dropping display metadata or producing different downstream
+IDs. An unknown reward keeps the casing decoded from the packet. Reward IDs are
+not UID inputs, so canonicalizing their casing does not change pull UIDs.
+
 ## Stability notes
 
 Every JSON record is exported with a stable `uid`. Re-scanning deeper history can

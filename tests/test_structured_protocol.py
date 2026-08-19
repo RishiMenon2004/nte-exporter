@@ -157,6 +157,12 @@ class StructuredProtocolTests(unittest.TestCase):
         self.assertEqual(rows[0]["secondary_quantity"], 5)
         self.assertEqual(rows[0]["structured_pool_id"], "CardPool_Character")
 
+    def test_structured_reward_mapping_is_case_insensitive_and_canonical(self):
+        row = decode_response_records(monopoly_payload("DICENORMAL,1"))[0]
+
+        self.assertEqual(row["reward_id"], "DiceNormal")
+        self.assertEqual(row["reward_name"], "Fabricated Dice")
+
     def test_structured_monopoly_parser_falls_back_when_heuristic_returns_no_rows(self):
         payload = monopoly_payload("Dice_ticket_02,50", roll_points=0)
 

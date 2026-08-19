@@ -24,16 +24,11 @@ from nte_history_exporter.constants import (
 from nte_history_exporter.decoder.boundary import select_continuous_run_from_page_1
 from nte_history_exporter.decoder.protocol import infer_reward_type
 from nte_history_exporter.decoder.run import fmt_packet_time
-from nte_history_exporter.mappings import REWARDS_BY_ID
+from nte_history_exporter.mappings import REWARDS_BY_CASEFOLD
 
 DOTNET_TICKS_PER_SECOND = 10_000_000
 MAX_RECORDS_PER_BLOCK = 100
 MAX_REWARD_ID_LENGTH = 256
-REWARDS_BY_CASEFOLDED_ID = {
-    reward_id.casefold(): reward for reward_id, reward in REWARDS_BY_ID.items()
-}
-
-
 def is_mystery_box_history_request(content: bytes) -> bool:
     if len(content) < MYSTERY_BOX_HISTORY_REQUEST_LENGTH:
         return False
@@ -108,16 +103,15 @@ def _parse_view(data: bytes) -> list[dict[str, Any]]:
             timestamp_raw = data[pos : pos + 8]
             pos += 8
             ticks, unix_seconds, timestamp_decoded = _decode_timestamp(timestamp_raw)
-            reward = REWARDS_BY_ID.get(reward_id) or REWARDS_BY_CASEFOLDED_ID.get(
-                reward_id.casefold(), {}
-            )
+            reward = REWARDS_BY_CASEFOLD.get(reward_id.casefold(), {})
+            canonical_reward_id = reward.get("id", reward_id)
             rows.append(
                 {
                     "record_start": record_start,
                     "record_end": pos,
                     "record_len": pos - record_start,
                     "reward_type": reward.get("type") or infer_reward_type(reward_id),
-                    "reward_id": reward_id,
+                    "reward_id": canonical_reward_id,
                     "reward_name": reward.get("name", ""),
                     "reward_rank": reward.get("rank"),
                     "quantity": quantity,
