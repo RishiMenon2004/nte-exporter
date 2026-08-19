@@ -154,13 +154,6 @@ def run_live_capture(
         stats = capture.stats()
         capture.close()
 
-    if stats:
-        console.print_capture_stats(
-            stats.received,
-            stats.dropped,
-            stats.interface_dropped,
-        )
-
     exports = []
     achievement_path = None
     if achievement_ids:
@@ -168,7 +161,6 @@ def run_live_capture(
         achievement_path.write_text(
             json.dumps(achievement_ids, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-        console.print_note(f"Achievement list written: {achievement_path}")
     diagnostics_path = None
     if write_debug_csv:
         diagnostics_path = new_diagnostics_path()
@@ -214,14 +206,25 @@ def run_live_capture(
         )
 
     console.print_results_header()
+    if stats:
+        console.print_capture_stats(
+            stats.received,
+            stats.dropped,
+            stats.interface_dropped,
+        )
+    if stats:
+        print()
+
     if not exports:
         if achievement_path is not None:
-            console.print_note("No pull-history pages were captured.")
+            console.print_success("Achievement export complete.")
+            console.print_note("No pull history was captured (this is fine if you only wanted achievements).")
+            print()
+            console.print_note(f"Export written: {achievement_path}")
         else:
             console.print_problem("No history pages were captured.")
-        console.print_note("Make sure the capture backend is running, then reopen the")
-        console.print_note("history screen and scroll from page 1. If no page messages")
-        console.print_note("appear, return to the main menu and re-enter the game.")
+            console.print_note("Reopen a supported history screen and scroll from page 1.")
+            console.print_note("If no page messages appear, return to the main menu and re-enter the game.")
         if diagnostics_path is not None:
             console.print_note(f"Diagnostics written: {diagnostics_path}")
         return {
@@ -246,6 +249,9 @@ def run_live_capture(
         if item["csv_path"] is not None:
             console.print_note(f"CSV written: {item['csv_path']}")
         console.print_note(f"Export written: {item['json_path']}")
+    if achievement_path is not None:
+        print()
+        console.print_note(f"Export written: {achievement_path}")
     if diagnostics_path is not None:
         console.print_note(f"Diagnostics written: {diagnostics_path}")
 
