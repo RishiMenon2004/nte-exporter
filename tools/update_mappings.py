@@ -78,7 +78,10 @@ def main(argv: list[str] | None = None) -> int:
         f"{changes['deletions']} deletions"
     )
     if args.apply:
-        print("applied: mappings/arcs.json, mappings/characters.json, mappings/items.json")
+        print(
+            "applied: mappings/arcs.json, mappings/characters.json, "
+            "mappings/items.json, mappings/achievements.json"
+        )
     return 1 if args.check and result.change_count else 0
 
 

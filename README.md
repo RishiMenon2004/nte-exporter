@@ -4,7 +4,7 @@
 
 # NTE History Exporter
 
-Prototype CLI exporter for **Neverness to Everness** pull history — decodes your own game traffic into sanitized JSON ready for tracker import.
+Prototype CLI exporter for **Neverness to Everness** pull history and achievements — decodes your own game traffic into sanitized JSON.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078D6)
@@ -23,10 +23,17 @@ Prototype CLI exporter for **Neverness to Everness** pull history — decodes yo
 
 ## What It Does
 
-The exporter decodes Permanent Board, Limited Character Board, Arc Miracle Box, and Mystery Box history pages from captured UDP data, applies conservative timestamp-boundary handling, and writes sanitized JSON suitable for tracker import.
+The exporter decodes Permanent Board, Limited Character Board, Arc Miracle Box,
+and Mystery Box history pages from captured UDP data. It also captures tracked
+achievements during login, including completed and in-progress records. Pull
+history is written as tracker-ready JSON and achievements use a separate
+versioned JSON format.
 
 > [!NOTE]
-> The import JSON contains decoded history rows and the shareable NTE user UID when it can be detected. It does **not** export tokens, account IDs, role IDs, device IDs, server IPs, raw packets, cookies, session data, or other capture metadata.
+> Export JSON contains decoded history or achievement records and the shareable
+> NTE user UID when it can be detected. It does **not** export tokens, account
+> IDs, role IDs, device IDs, server IPs, raw packets, cookies, session data, or
+> other capture metadata.
 
 ## Requirements
 
@@ -90,7 +97,11 @@ From source:
 Or simply double-click **`run-exporter.cmd`**.
 
 > [!IMPORTANT]
-> For automatic user UID and account-server detection, launch the tool **before pressing Start on the game's main menu**. If you are already in game, history capture can still work; the tool will ask for missing account details before saving.
+> Start the exporter **before pressing Start on the game's main menu**. This is
+> required for achievement capture and enables automatic user UID and
+> account-server detection. If already in game, pull-history capture still
+> works, but achievements require returning to the main menu and logging in
+> again; missing account details are requested before saving.
 
 Once running, open any supported history board in game. The tool keeps listening until you press any key. After it prints and saves the results, press any key again to close the exporter. Exports are written under `exports\` as:
 
@@ -98,6 +109,7 @@ Once running, open any supported history board in game. The tool keeps listening
 - `<user_uid>_Limited_<date_time>.json`
 - `<user_uid>_Arc_<date_time>.json`
 - `<user_uid>_MysteryBox_<date_time>.json`
+- `<user_uid>_Achievements_<date_time>.json`
 
 If the user UID is not detected automatically, the console asks for it before saving. Leaving it blank saves as `unknown_<banner>_<date_time>.json`, but may prevent import on some trackers.
 
@@ -109,6 +121,25 @@ omit server information.
 Exports are not copied to the clipboard by default. Add `--copy-clipboard` to copy a single captured banner's JSON after saving. If multiple banners are captured in the same run, clipboard copy is skipped so one banner does not overwrite another.
 
 If a page response is missed, the exporter reports the missing page number while capture is still running. Leave the exporter open, close and reopen that history board, then scroll down again. Scrolling backward within the existing view does not request the cached pages again. The replacement capture is accepted and the tool confirms when the gap has been recovered. If reopening the board still produces no page messages, return to the main menu and re-enter the game to start a fresh connection.
+
+### Achievement export
+
+Start the live exporter before pressing Start on the game's main menu. The
+tracked achievement state is loaded during login, captured automatically, and written to
+`exports/<user_uid>_Achievements_*.json` as a versioned achievement export with
+account metadata, completion totals, and records grouped by achievement category.
+Both completed and in-progress achievements are included with their current
+progress, status, and completion time when available. Generated metadata adds
+the localized title and description, target, quality, and rewards from the
+current `NTE_Assets` achievement table. Newly captured IDs that are not yet in
+the bundled mapping still export normally; only their optional display metadata
+is omitted until the mappings are refreshed.
+PlayStation trophy entries are retained and identified separately
+even though they are not shown in the in-game achievement list. The console
+reports completed and in-progress totals for in-game and PlayStation records as
+soon as the list has been decoded. Every observed record without a completion
+timestamp is classified as `in_progress`, even when its numeric progress is
+zero; compound achievements can track hidden checklist progress this way.
 
 #### Linux/macOS
 
@@ -150,7 +181,7 @@ Decodes a `mitmproxy .flows` capture instead of listening live — used for rese
 
 | Flag      | Effect                                              |
 | --------- | --------------------------------------------------- |
-| `--live`  | Capture live UDP traffic instead of reading a file. |
+| `--live`  | Capture live traffic, including achievements loaded at login. |
 | `--debug` | Also write the research CSV and privacy-safe capture diagnostics. |
 | `--user-uid <uid>` | Override the auto-detected NTE user UID in the JSON export. |
 | `--copy-clipboard` | Copy a single live export JSON to clipboard after saving. |
@@ -175,22 +206,22 @@ The exporter automatically includes the shareable NTE user UID when it appears i
 
 ## Mapping maintenance
 
-Reward metadata can be rebuilt directly from the latest NTE_Assets tables and
-English translation files. The reward snapshot may change IDs while UID inputs
-remain untouched:
+Reward and achievement metadata can be rebuilt directly from the latest
+NTE_Assets tables and English translation files. Mapping snapshots may change
+IDs while UID inputs remain untouched:
 
-Run **Update reward mappings** from the GitHub Actions tab to generate and test
+Run **Update mappings** from the GitHub Actions tab to generate and test
 the snapshot in a reviewable pull request, or run it locally:
 
 ```powershell
 python tools/update_mappings.py
 ```
 
-This rebuilds reviewable reward-map candidates directly from NTE_Assets under
+This rebuilds reviewable mapping candidates directly from NTE_Assets under
 `build/mapping-update/`; committed mappings are untouched unless `--apply` is
 explicitly supplied. The snapshot may include additions, updates, and removals,
 while pool mappings and UID inputs remain untouched. See
-[Reward mapping updates](docs/mapping-updates.md) for the source rules and
+[Mapping updates](docs/mapping-updates.md) for the source rules and
 review workflow.
 
 ## Privacy

@@ -1,6 +1,21 @@
 # Packet Format Notes
 
-This prototype supports separate Monopoly, Arc/Gashapon, and Mystery Box history decoders.
+This prototype supports separate Monopoly, Arc/Gashapon, Mystery Box history,
+and achievement decoders.
+
+## Achievements
+
+The account's achievement component arrives in an inbound TCP game-data block
+during login. The block is LZ4-decoded and contains `AchievementRecord` entries.
+Each record provides an achievement ID, an unsigned numeric progress value, and
+a .NET completion timestamp. A non-zero timestamp marks a completed record.
+Every observed record without completion ticks is treated as in progress;
+compound achievements can have server-side checklist progress while exposing a
+numeric value of zero.
+
+Only records present in the network response are exported. Display metadata is
+looked up case-insensitively in `mappings/achievements.json`, because captured
+and asset-table ID casing can differ. Missing metadata never prevents export.
 
 ## Decoder strategy
 
@@ -86,6 +101,10 @@ Decoded fields:
   Arc/Gashapon history uses the same scheme at `ASCII * 2`.
 - The decoder decodes the key to its id string and looks up display metadata
   in `mappings/arcs.json`, `mappings/characters.json`, and `mappings/items.json`.
+  Lookups are case-insensitive across Monopoly, Arc, and Mystery Box decoders;
+  known IDs are emitted using mapping-canonical casing.
+  Achievement display metadata is generated separately in
+  `mappings/achievements.json`.
   Unknown rewards still export their decoded id with empty name/rank.
 
 Page and row numbers are research metadata only. They must not be used for permanent dedupe because they shift when new history appears.

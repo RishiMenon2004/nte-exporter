@@ -62,7 +62,7 @@ def print_banner() -> None:
     print()
     print(rule("="))
     print(style(f"  NTE History Exporter  v{EXPORTER_VERSION}", BOLD, CYAN))
-    print(style(f"  {GAME_NAME} pull history -> tracker JSON", DIM))
+    print(style(f"  {GAME_NAME} history and achievements -> JSON", DIM))
     print(style(f"  {REPOSITORY_URL}", DIM))
     heart = "❤️" if (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "") == "utf8" else "<3"
     print(style("  Created with ", DIM) + style(heart, RED) + style(" by Golumpa", DIM))
@@ -75,29 +75,58 @@ def print_live_instructions(local_ip: str, backend: str = "windows_raw", detail:
     backend_detail = f" ({detail})" if detail and detail != local_ip else ""
     print(style(f"  Capture backend: {backend}{backend_detail}", DIM))
     print()
-    print(style("  How to export your pull history", BOLD))
-    print("    1. For automatic user UID detection, start this tool")
-    print("       before pressing Start on the game's main menu.")
-    print("       Already in game? You can still capture history;")
-    print("       the tool will ask for your UID if it cannot detect it.")
-    print("    2. Open a supported history screen:")
-    print(style("         Monopoly  >  Standard Board history", CYAN))
-    print(style("         Monopoly  >  Limited Character Board history", CYAN))
-    print(style("         Gashapon  >  Arc Miracle Box history", CYAN))
-    print(style("         Gashapon  >  Mystery Box history", CYAN))
-    print("    3. Start at page 1 and scroll down through every page")
-    print("       you want exported.")
-    print("    4. Scroll one page past where you plan to stop so the")
-    print("       last pull group can be confirmed as complete.")
-    print("    5. You can open several boards in the same session.")
+    print(style("  Before you begin", BOLD))
+    print("    Start this exporter before pressing Start on the game's")
+    print("    main menu. This lets it capture your achievements and")
+    print("    detect your account UID and server automatically.")
     print()
-    print(style("  Waiting for history pages... press any key here when done.", BOLD, GREEN))
+    print("    Already in game? Pull history still works, but achievement")
+    print("    capture requires restarting the game. Missing account details")
+    print("    will be requested when your exports are saved.")
+    print()
+    print(style("  Pull history", BOLD))
+    print("    Open a supported history screen, start at page 1, then")
+    print("    scroll through every page you want to export. Go one page")
+    print("    further so the exporter can confirm the final pull group.")
+    print()
+    print(style("    Monopoly:", DIM) + " Standard Board or Limited Character Board")
+    print(style("    Gashapon:", DIM) + " Arc Miracle Box or Mystery Box")
+    print(style("    You can capture more than one board in the same session.", DIM))
+    print()
+    print(style("  Achievements", BOLD))
+    print("    Your tracked achievements are captured automatically when")
+    print("    you log in after following the step above.")
+    print()
+    print(style("  Ready - use the game, then press any key here when finished.", BOLD, GREEN))
     print(rule())
 
 
 def print_page_captured(label: str, page: int | None, *, recaptured: bool = False) -> None:
     action = "recaptured" if recaptured else "page"
     print(style("  + ", GREEN, BOLD) + label + style(f"  {action} {page}", DIM))
+
+
+def print_achievements_captured(
+    in_game_completed: int,
+    in_game_in_progress: int,
+    playstation_completed: int,
+    playstation_in_progress: int,
+) -> None:
+    print(style("  + ", GREEN, BOLD) + "Achievements captured")
+    print(
+        style(
+            f"      In-game      {in_game_completed} completed, "
+            f"{in_game_in_progress} in progress",
+            DIM,
+        )
+    )
+    print(
+        style(
+            f"      PlayStation  {playstation_completed} completed, "
+            f"{playstation_in_progress} in progress",
+            DIM,
+        )
+    )
 
 
 def print_missing_pages(label: str, pages: list[int]) -> None:
@@ -169,7 +198,7 @@ def print_problem(text: str) -> None:
 def print_update_available(current_version: str, latest_version: str, release_url: str) -> None:
     print()
     print(style(f"  Update available: v{current_version} -> {latest_version}", YELLOW, BOLD))
-    print(style("  Some banner/reward mappings may be incomplete in this version.", YELLOW))
+    print(style("  Some reward or achievement mappings may be incomplete in this version.", YELLOW))
     print(style("  Updating is recommended for the most accurate export labels.", YELLOW))
     print(style(f"  Download when ready: {release_url}", YELLOW))
 

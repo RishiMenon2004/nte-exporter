@@ -1,0 +1,22 @@
+[
+  {
+    "Rows": {
+      "battle_25": {
+        "Amout": 50,
+        "AchievementMainType": "AchievementMainType::MainTypeFight",
+        "AwardInfo": [
+          {"ItemID": "Annulith", "Amount": 10}
+        ],
+        "TitleId": {
+          "TableId": "/Game/Text/ST_Achievement.ST_Achievement",
+          "Key": "battle_25_Title"
+        },
+        "ContentID": {
+          "TableId": "/Game/Text/ST_Achievement.ST_Achievement",
+          "Key": "battle_25_Content"
+        },
+        "Quality": "EHTAchievementQuality::High"
+      }
+    }
+  }
+]

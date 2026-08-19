@@ -21,7 +21,7 @@ from nte_history_exporter.constants import (
 )
 from nte_history_exporter.decoder.boundary import select_continuous_run_from_page_1
 from nte_history_exporter.decoder.run import fmt_packet_time
-from nte_history_exporter.mappings import ARC_META
+from nte_history_exporter.mappings import ARC_META_BY_CASEFOLD
 from nte_history_exporter.decoder.structured_protocol import (
     StructuredProtocolAssembler,
     StructuredRecord,
@@ -95,7 +95,7 @@ def _parse_legacy_arc_response(response: bytes) -> list[dict[str, Any]]:
         timestamp_raw = response[pos : pos + 8]
         pos += 8
         arc_id = decode_arc_key(name_raw) or name_raw.hex()
-        meta = ARC_META.get(arc_id, {})
+        canonical_id, meta = _resolve_arc_metadata(arc_id)
         try:
             ticks, unix_seconds, timestamp_decoded = decode_arc_timestamp(timestamp_raw)
         except ValueError:
@@ -107,7 +107,7 @@ def _parse_legacy_arc_response(response: bytes) -> list[dict[str, Any]]:
                 "record_len": pos - start,
                 "reward_key_hex": name_raw.hex(),
                 "reward_type": "arc",
-                "reward_id": arc_id,
+                "reward_id": canonical_id,
                 "reward_name": meta.get("name", "UNKNOWN"),
                 "reward_rank": meta.get("rank", ""),
                 "type_key_hex": type_raw.hex(),
@@ -122,18 +122,15 @@ def _parse_legacy_arc_response(response: bytes) -> list[dict[str, Any]]:
     return records
 
 
-def _arc_metadata(arc_id: str) -> dict[str, Any]:
-    direct = ARC_META.get(arc_id)
-    if direct is not None:
-        return direct
-    folded = arc_id.casefold()
-    return next((meta for item_id, meta in ARC_META.items() if item_id.casefold() == folded), {})
+def _resolve_arc_metadata(arc_id: str) -> tuple[str, dict[str, Any]]:
+    canonical_id, meta = ARC_META_BY_CASEFOLD.get(arc_id.casefold(), (arc_id, {}))
+    return canonical_id, meta
 
 
 def structured_arc_rows(structured_rows: list[StructuredRecord]) -> list[dict[str, Any]]:
     records = []
     for structured in structured_rows:
-        meta = _arc_metadata(structured.item_id)
+        canonical_id, meta = _resolve_arc_metadata(structured.item_id)
         records.append(
             {
                 "record_start": structured.record_start,
@@ -141,7 +138,7 @@ def structured_arc_rows(structured_rows: list[StructuredRecord]) -> list[dict[st
                 "record_len": structured.record_end - structured.record_start,
                 "reward_key_hex": "",
                 "reward_type": "arc",
-                "reward_id": structured.item_id,
+                "reward_id": canonical_id,
                 "reward_name": meta.get("name", "UNKNOWN"),
                 "reward_rank": meta.get("rank", ""),
                 "type_key_hex": "",

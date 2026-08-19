@@ -12,6 +12,8 @@ from nte_history_exporter.constants import (
     MYSTERY_BOX_BANNER_ID,
 )
 from nte_history_exporter.decoder.server_region import account_region_for_server
+from nte_history_exporter.decoder.achievement import AchievementRecord
+from nte_history_exporter.mappings import ACHIEVEMENTS_BY_CASEFOLD
 
 
 def build_export_json(
@@ -75,6 +77,83 @@ def build_export_json(
         if account_region:
             export["account_region"] = account_region
     export["records"] = [_record_for_export(r) for r in exported]
+    return export
+
+
+def build_achievement_export_json(
+    achievement_records: list[AchievementRecord],
+    *,
+    source: str = "packet_capture",
+    capture_source: str | None = None,
+    user_uid: str | None = None,
+    server_id: str | None = None,
+) -> dict[str, Any]:
+    categories: dict[str, list[dict[str, Any]]] = {}
+    scan = {
+        "in_game": {
+            "total_achievements": 0,
+            "completed_achievements": 0,
+            "in_progress_achievements": 0,
+        },
+        "playstation": {
+            "total_achievements": 0,
+            "completed_achievements": 0,
+            "in_progress_achievements": 0,
+        },
+    }
+    for achievement in achievement_records:
+        achievement_id = achievement.achievement_id
+        is_playstation = achievement_id.casefold().startswith("playstation_")
+        summary = scan["playstation" if is_playstation else "in_game"]
+        summary["total_achievements"] += 1
+        if achievement.completed:
+            summary["completed_achievements"] += 1
+        else:
+            summary["in_progress_achievements"] += 1
+        category, separator, _number = achievement_id.partition("_")
+        category_key = category.casefold() if separator else "uncategorized"
+        record = {
+            "id": achievement_id,
+            "platform": "playstation" if is_playstation else "in_game",
+            "status": achievement.status,
+            "progress": achievement.progress,
+            "completed": achievement.completed,
+            "completed_at": achievement.completed_at,
+        }
+        metadata = ACHIEVEMENTS_BY_CASEFOLD.get(achievement_id.casefold())
+        if metadata:
+            record.update(
+                {
+                    "name": metadata["name"],
+                    "description": metadata["description"],
+                    "quality": metadata["quality"],
+                    "target": metadata["target"],
+                    "rewards": metadata["rewards"],
+                }
+            )
+        categories.setdefault(category_key, []).append(record)
+
+    export: dict[str, Any] = {
+        "format": "nte-achievement-export",
+        "format_version": 1,
+        "game": GAME_NAME,
+        "source": source,
+    }
+    if capture_source:
+        export["capture_source"] = capture_source
+    export["exporter"] = {"name": EXPORTER_NAME, "version": __version__}
+    export["scan"] = scan
+
+    normalized_user_uid = user_uid.strip() if user_uid else ""
+    normalized_server_id = str(server_id).strip() if server_id else ""
+    if normalized_user_uid:
+        export["user_uid"] = normalized_user_uid
+    if normalized_server_id:
+        export["server_id"] = normalized_server_id
+        account_region = account_region_for_server(normalized_server_id)
+        if account_region:
+            export["account_region"] = account_region
+    export["categories"] = categories
     return export
 
 

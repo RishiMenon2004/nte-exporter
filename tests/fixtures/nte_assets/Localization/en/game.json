@@ -1,4 +1,8 @@
 {
+  "ST_Achievement": {
+    "battle_25_Title": "Devil Within II",
+    "battle_25_Content": "Trigger Hexed ×50."
+  },
   "ST_Player": {
     "character_1003": "Old Character Renamed",
     "character_1099": "New Character"
@@ -14,5 +18,9 @@
   },
   "ST_Appearance": {
     "glider_2000": "Inventory Glider"
+  },
+  "ST_VehicleData": {
+    "vehicle_1010_livery": "Tiger Incoming! - Livery",
+    "vehicle_placeholder_livery": "Sandy Mirage - Livery"
   }
 }

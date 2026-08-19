@@ -71,6 +71,15 @@ class MysteryBoxDecodingTests(unittest.TestCase):
         self.assertEqual(rows[2]["reward_name"], "Beetle Coin")
         self.assertEqual(rows[2]["reward_rank"], "B")
 
+    def test_reward_mapping_lookup_is_case_insensitive_and_canonical(self):
+        timestamp = datetime(2026, 7, 8, 19, 9, 33, tzinfo=timezone.utc)
+        rows = parse_mystery_box_response(
+            mystery_box_response([("Vehicle039", 1, timestamp)])
+        )
+
+        self.assertEqual(rows[0]["reward_id"], "vehicle039")
+        self.assertEqual(rows[0]["reward_name"], "Draco")
+
     def test_live_session_accepts_partial_final_page(self):
         session = LiveHistorySession("192.168.0.10")
         request = mystery_box_request(3)

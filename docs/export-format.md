@@ -15,7 +15,7 @@ decoder-only offsets.
   "capture_source": "npcap",
   "exporter": {
     "name": "nte-history-exporter",
-    "version": "0.2.1"
+    "version": "0.3.0"
   },
   "banner": {
     "id": "Lottery_Permanent",
@@ -83,6 +83,12 @@ Current stable pool IDs:
 
 Avoid using `banner.name`, `reward_name`, `reward_type` or `reward_rank` as primary IDs. They
 are useful display fields, but may change when mapping files are updated.
+
+Known `reward_id` values are matched case-insensitively and emitted using the
+canonical casing from the bundled mapping. This prevents packet/asset casing
+differences from dropping display metadata or producing different downstream
+IDs. An unknown reward keeps the casing decoded from the packet. Reward IDs are
+not UID inputs, so canonicalizing their casing does not change pull UIDs.
 
 ## Stability notes
 
@@ -175,6 +181,79 @@ Mystery Box:
   "source_type": "mystery_box"
 }
 ```
+
+## Achievement export
+
+Achievements are written separately as
+`<user_uid>_Achievements_<date_time>.json`. The document contains only records
+observed in the account's login response; definitions found only in the asset
+mapping are not synthesized into the export.
+
+```json
+{
+  "format": "nte-achievement-export",
+  "format_version": 1,
+  "game": "Neverness to Everness",
+  "source": "live_capture",
+  "capture_source": "npcap",
+  "exporter": {
+    "name": "nte-history-exporter",
+    "version": "0.3.0"
+  },
+  "scan": {
+    "in_game": {
+      "total_achievements": 367,
+      "completed_achievements": 310,
+      "in_progress_achievements": 57
+    },
+    "playstation": {
+      "total_achievements": 35,
+      "completed_achievements": 31,
+      "in_progress_achievements": 4
+    }
+  },
+  "user_uid": "218216016349",
+  "server_id": "23003",
+  "account_region": "EU",
+  "categories": {
+    "battle": [
+      {
+        "id": "Battle_25",
+        "platform": "in_game",
+        "status": "in_progress",
+        "progress": 20,
+        "completed": false,
+        "completed_at": null,
+        "name": "Devil Within II",
+        "description": "Trigger Hexed ×50.",
+        "quality": "high",
+        "target": 50,
+        "rewards": [
+          {"item_id": "Annulith", "amount": 10}
+        ]
+      }
+    ]
+  }
+}
+```
+
+Achievement fields:
+
+- `scan.in_game` and `scan.playstation` separate records visible in game from
+  PlayStation trophy records and report completed/in-progress totals.
+- `categories` groups records by the prefix of their captured ID. The category
+  is therefore not repeated on every record.
+- `status` is `completed` when completion ticks are present and `in_progress`
+  otherwise. An observed compound achievement can be in progress while its
+  numeric `progress` is zero because individual checklist state is server-side.
+- `completed_at` is a decoded UTC time for completed records and `null` for
+  in-progress records.
+- `name`, `description`, `quality`, `target`, and `rewards` are optional display
+  metadata from `mappings/achievements.json`.
+- A newly captured ID missing from the bundled mapping still exports its core
+  captured fields; only optional display metadata is omitted.
+- Asset definitions absent from the network response are not exported because
+  absence cannot distinguish unstarted, locked, or unavailable content.
 
 ## CSV diagnostics
 

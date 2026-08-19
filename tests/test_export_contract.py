@@ -1,8 +1,16 @@
 from tests.support import *  # noqa: F401,F403
 from nte_history_exporter import __version__
+from nte_history_exporter.constants import EXPORTER_VERSION
+from nte_history_exporter.decoder.achievement import AchievementRecord
+from nte_history_exporter.export.json_export import build_achievement_export_json
+from nte_history_exporter.live_capture.runner import _achievement_path
 
 
 class ExportContractTests(unittest.TestCase):
+    def test_public_version_references_match(self):
+        self.assertEqual(__version__, "0.3.0")
+        self.assertEqual(EXPORTER_VERSION, __version__)
+
     def test_sanitized_export_omits_raw_packet_fields(self):
         annotated = annotate_groups(fixture_session().build_rows("permanent"))
         export = build_export_json(annotated, [])
@@ -115,6 +123,81 @@ class ExportContractTests(unittest.TestCase):
         self.assertRegex(
             json_path.name,
             r"^218216016349_Limited_\d{8}_\d{6}(?:_\d+)?\.json$",
+        )
+
+    def test_achievement_path_includes_user_uid_and_timestamp(self):
+        path = _achievement_path("218216016349")
+
+        self.assertRegex(
+            path.name,
+            r"^218216016349_Achievements_\d{8}_\d{6}(?:_\d+)?\.json$",
+        )
+
+    def test_achievement_export_has_versioned_metadata_and_records(self):
+        export = build_achievement_export_json(
+            [
+                AchievementRecord("Battle_30", 10, 639_136_215_846_370_000),
+                AchievementRecord("Battle_25", 20, 0),
+                AchievementRecord("Playstation_017", 0, 0),
+            ],
+            source="live_capture",
+            capture_source="npcap",
+            user_uid="218216016349",
+            server_id="23003",
+        )
+
+        self.assertEqual(export["format"], "nte-achievement-export")
+        self.assertEqual(export["format_version"], 1)
+        self.assertEqual(export["capture_source"], "npcap")
+        self.assertEqual(export["user_uid"], "218216016349")
+        self.assertEqual(export["account_region"], "EU")
+        self.assertEqual(
+            export["scan"],
+            {
+                "in_game": {
+                    "total_achievements": 2,
+                    "completed_achievements": 1,
+                    "in_progress_achievements": 1,
+                },
+                "playstation": {
+                    "total_achievements": 1,
+                    "completed_achievements": 0,
+                    "in_progress_achievements": 1,
+                },
+            },
+        )
+        battle_30, battle_25 = export["categories"]["battle"]
+        self.assertEqual(battle_30["name"], "Death Nova I")
+        self.assertEqual(battle_30["completed_at"], "2026-05-05 23:46:24")
+        self.assertEqual(battle_25["name"], "Devil Within II")
+        self.assertEqual(battle_25["description"], "Trigger Hexed ×50.")
+        self.assertEqual(battle_25["progress"], 20)
+        self.assertEqual(battle_25["target"], 50)
+        self.assertEqual(battle_25["quality"], "high")
+        self.assertEqual(
+            battle_25["rewards"], [{"item_id": "Annulith", "amount": 10}]
+        )
+        self.assertEqual(
+            export["categories"]["playstation"][0]["name"], "Speed Above All"
+        )
+
+    def test_unmapped_achievement_still_exports_capture_data(self):
+        export = build_achievement_export_json(
+            [AchievementRecord("FutureCategory_999", 7, 0)]
+        )
+
+        self.assertEqual(
+            export["categories"]["futurecategory"],
+            [
+                {
+                    "id": "FutureCategory_999",
+                    "platform": "in_game",
+                    "status": "in_progress",
+                    "progress": 7,
+                    "completed": False,
+                    "completed_at": None,
+                }
+            ],
         )
 
     def test_extracts_user_uid_from_record_context(self):

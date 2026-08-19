@@ -1,8 +1,14 @@
 from tests.support import *  # noqa: F401,F403
-from nte_history_exporter.decoder.arc import annotate_arc_groups
+from nte_history_exporter.decoder.arc import annotate_arc_groups, _resolve_arc_metadata
 
 
 class ArcDecodingTests(unittest.TestCase):
+    def test_arc_mapping_lookup_is_case_insensitive_and_canonical(self):
+        reward_id, metadata = _resolve_arc_metadata("fork_Wushoutieyu")
+
+        self.assertEqual(reward_id, "fork_wushoutieyu")
+        self.assertEqual(metadata, {"name": "Raging Flames", "rank": "S"})
+
     def test_page_split_timestamp_variants_form_one_ten_pull(self):
         rows = [
             {

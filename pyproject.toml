@@ -1,7 +1,7 @@
 [project]
 name = "nte-history-exporter"
-version = "0.2.1"
-description = "Cross-platform Neverness to Everness pull-history exporter."
+version = "0.3.0"
+description = "Cross-platform Neverness to Everness pull-history and achievement exporter."
 requires-python = ">=3.10"
 dependencies = []
 

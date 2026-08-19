@@ -9,6 +9,7 @@
   "1023": {"name": "Baicang", "rank": "S"},
   "1025": {"name": "Hathor", "rank": "S"},
   "1033": {"name": "Adler", "rank": "A"},
+  "1036": {"name": "Zankou", "rank": "S"},
   "1039": {"name": "Fadia", "rank": "S"},
   "1046": {"name": "Zero", "rank": "S"},
   "1051": {"name": "Zero", "rank": "S"},
@@ -18,7 +19,9 @@
   "1056": {"name": "Lacrimosa", "rank": "S"},
   "1070": {"name": "Aurelia", "rank": "A"},
   "1071": {"name": "Chaos", "rank": "S"},
+  "1072": {"name": "Linko", "rank": "S"},
   "1073": {"name": "Chiz", "rank": "S"},
   "1075": {"name": "Iroi", "rank": "S"},
-  "1076": {"name": "Shinku", "rank": "S"}
+  "1076": {"name": "Shinku", "rank": "S"},
+  "1091": {"name": "Lacrimosa", "rank": "S"}
 }

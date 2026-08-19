@@ -12,6 +12,9 @@ MONOPOLY_MARKER = b"FMonopolyLotteryRecordData"
 FORK_MARKER = b"FForkLotteryRecordData"
 MAX_ROWS_PER_BLOCK = 100
 MAX_STRING_LENGTH = 256
+# Bit-packed UDP views can omit up to the final three protocol-padding bytes.
+# The declared size covers that padding, while all declared rows remain intact.
+MAX_SHIFTED_BLOCK_PADDING_SHORTFALL = 3
 DOTNET_EPOCH_TICKS = 621_355_968_000_000_000
 DOTNET_TICKS_PER_SECOND = 10_000_000
 MIN_UNIX_SECONDS = 1_500_000_000
@@ -230,7 +233,11 @@ def _parse_block(
     pos += 12
     if row_count > MAX_ROWS_PER_BLOCK:
         raise StructuredProtocolError(f"row count is too large: {row_count}")
-    if declared_size > len(data) - pos:
+    size_shortfall = declared_size - (len(data) - pos)
+    if size_shortfall > 0 and not (
+        view_name.startswith("shift8:")
+        and size_shortfall <= MAX_SHIFTED_BLOCK_PADDING_SHORTFALL
+    ):
         raise StructuredProtocolError("declared block size exceeds payload")
 
     reader = _Reader(data, pos)

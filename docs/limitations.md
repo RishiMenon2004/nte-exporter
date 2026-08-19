@@ -21,5 +21,13 @@ Known limitations:
 - The file adapter reads mitmproxy `.flows` captures for research and testing.
 - Npcap is Windows-only and is not redistributed with this project; Linux and macOS use their system libpcap.
 - Reward keys decode to their reward id string, so unknown rewards still export a usable `reward_id`; display names/ranks come from the mapping JSON files and should be expanded as new rewards appear.
+- Achievement exports contain only records observed in the login response.
+  Asset-only definitions are not synthesized because absence cannot distinguish
+  unstarted, locked, or unavailable content. Unknown captured achievement IDs
+  still export without optional display metadata.
+- Observed achievements have only `completed` and `in_progress` states. Some
+  compound achievements expose numeric progress `0` while the server tracks
+  hidden checklist progress, so every observed record without completion ticks
+  is classified as `in_progress`.
 
 Privacy guardrail: raw packet data must not be included in sanitized exports.
