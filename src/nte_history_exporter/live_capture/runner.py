@@ -9,10 +9,16 @@ from pathlib import Path
 
 from nte_history_exporter import console
 from nte_history_exporter.constants import POOL_META
-from nte_history_exporter.decoder.achievement import extract_achievement_ids, reassemble_tcp_segments
+from nte_history_exporter.decoder.achievement import (
+    extract_achievement_records,
+    reassemble_tcp_segments,
+)
 from nte_history_exporter.decoder.boundary import annotate_groups, select_continuous_run_from_page_1
 from nte_history_exporter.export.csv_export import write_csv
-from nte_history_exporter.export.json_export import build_export_json
+from nte_history_exporter.export.json_export import (
+    build_achievement_export_json,
+    build_export_json,
+)
 from nte_history_exporter.live_capture.backends import open_capture_backend
 from nte_history_exporter.live_capture.diagnostics import new_diagnostics_path, write_capture_diagnostics
 from nte_history_exporter.live_capture.session import LiveHistorySession, UdpPacket
@@ -81,7 +87,7 @@ def run_live_capture(
     reported_missing_pages: dict[str, tuple[int, ...]] = {}
     active_gap_notices: set[str] = set()
     tcp_segments: dict[tuple[str, int, str, int], list[tuple[int, bytes]]] = {}
-    achievement_ids: list[str] = []
+    achievement_records = []
 
     try:
         with StopKeyMonitor() as stop_key:
@@ -91,7 +97,7 @@ def run_live_capture(
                 if packet is None:
                     continue
                 if (
-                    not achievement_ids
+                    not achievement_records
                     and packet.protocol == "tcp"
                     and packet.payload
                     and packet.dst_ip == local_ip
@@ -100,16 +106,17 @@ def run_live_capture(
                     tcp_segments.setdefault(flow, []).append(
                         (packet.sequence_number, packet.payload)
                     )
-                    if not achievement_ids:
-                        achievement_ids = extract_achievement_ids(
+                    if not achievement_records:
+                        achievement_records = extract_achievement_records(
                             reassemble_tcp_segments(tcp_segments[flow])
                         )
-                        if achievement_ids:
+                        if achievement_records:
+                            completed = [record for record in achievement_records if record.completed]
                             console.print_achievements_captured(
-                                len(achievement_ids),
+                                len(completed),
                                 sum(
-                                    value.lower().startswith("playstation_")
-                                    for value in achievement_ids
+                                    record.achievement_id.lower().startswith("playstation_")
+                                    for record in completed
                                 ),
                             )
                 pair_count_before = len(session.pairs)
@@ -156,18 +163,26 @@ def run_live_capture(
 
     exports = []
     achievement_path = None
-    if achievement_ids:
-        achievement_path = _achievement_path()
-        achievement_path.write_text(
-            json.dumps(achievement_ids, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
     diagnostics_path = None
     if write_debug_csv:
         diagnostics_path = new_diagnostics_path()
         write_capture_diagnostics(diagnostics_path, session.diagnostic_report())
     resolved_user_uid = user_uid or session.user_uid
-    if session.kinds_seen() and not resolved_user_uid:
+    if (session.kinds_seen() or achievement_records) and not resolved_user_uid:
         resolved_user_uid = console.prompt_user_uid()
+    if achievement_records:
+        achievement_path = _achievement_path(resolved_user_uid)
+        achievement_export = build_achievement_export_json(
+            achievement_records,
+            source="live_capture",
+            capture_source=CAPTURE_SOURCE_LABELS.get(capture.name, capture.name),
+            user_uid=resolved_user_uid,
+            server_id=session.server_id,
+        )
+        achievement_path.write_text(
+            json.dumps(achievement_export, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     resolved_server_id = session.server_id
     if session.kinds_seen() and not resolved_server_id:
         resolved_server_id = console.prompt_server_id()
@@ -270,10 +285,11 @@ def run_live_capture(
     }
 
 
-def _achievement_path() -> Path:
+def _achievement_path(user_uid: str | None = None) -> Path:
     export_dir = Path("exports")
     export_dir.mkdir(parents=True, exist_ok=True)
-    base = export_dir / f"Achievements_{datetime.now():%Y%m%d_%H%M%S}"
+    uid_prefix = _safe_filename_part(user_uid) if user_uid else "unknown"
+    base = export_dir / f"{uid_prefix}_Achievements_{datetime.now():%Y%m%d_%H%M%S}"
     path = base.with_suffix(".json")
     counter = 2
     while path.exists():

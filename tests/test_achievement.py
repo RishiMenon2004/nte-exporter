@@ -4,6 +4,7 @@ import unittest
 from nte_history_exporter.decoder.achievement import (
     ACHIEVEMENT_RECORD_MARKER,
     extract_achievement_ids,
+    extract_achievement_records,
     reassemble_tcp_segments,
 )
 
@@ -21,6 +22,13 @@ class AchievementPacketTests(unittest.TestCase):
 
         self.assertEqual(extract_achievement_ids(stream), ["Battle_30"])
         self.assertEqual(extract_achievement_ids(b"\x01\0\0\0\0"), [])
+
+        records = extract_achievement_records(stream)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].achievement_id, "Battle_30")
+        self.assertTrue(records[0].completed)
+        self.assertEqual(records[1].achievement_id, "Playstation_035")
+        self.assertEqual(records[1].status, "not_started")
 
     def test_reassembles_tcp_data(self):
         self.assertEqual(

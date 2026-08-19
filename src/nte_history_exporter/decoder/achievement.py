@@ -1,5 +1,7 @@
 import re
 import struct
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 ACHIEVEMENT_RECORD_MARKER = b"AchievementRecord\0"
 ACHIEVEMENT_ID = re.compile(rb"([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)\0")
@@ -7,17 +9,58 @@ RECORD_COUNT_OFFSET = 22
 RECORDS_OFFSET = 38
 COMPLETION_TICKS_OFFSET = 8
 MAX_ACHIEVEMENTS = 1_000
+DOTNET_EPOCH_TICKS = 621_355_968_000_000_000
+DOTNET_TICKS_PER_SECOND = 10_000_000
+
+
+@dataclass(frozen=True)
+class AchievementRecord:
+    achievement_id: str
+    progress: int
+    completion_ticks: int
+
+    @property
+    def completed(self) -> bool:
+        return self.completion_ticks != 0
+
+    @property
+    def status(self) -> str:
+        if self.completed:
+            return "completed"
+        return "in_progress" if self.progress else "not_started"
+
+    @property
+    def completed_at(self) -> str | None:
+        if not self.completed:
+            return None
+        unix_seconds = (
+            self.completion_ticks - DOTNET_EPOCH_TICKS
+        ) / DOTNET_TICKS_PER_SECOND
+        try:
+            return datetime.fromtimestamp(unix_seconds, timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        except (OverflowError, OSError, ValueError):
+            return None
 
 
 def extract_achievement_ids(stream: bytes) -> list[str]:
+    return [
+        record.achievement_id
+        for record in extract_achievement_records(stream)
+        if record.completed
+    ]
+
+
+def extract_achievement_records(stream: bytes) -> list[AchievementRecord]:
     for block in _game_data_blocks(stream):
         decoded = _decompress_lz4_block(block)
         marker = decoded.find(ACHIEVEMENT_RECORD_MARKER)
         if marker < 0:
             continue
-        achievement_ids = _completed_achievement_ids(decoded, marker)
-        if achievement_ids:
-            return achievement_ids
+        records = _achievement_records(decoded, marker)
+        if records:
+            return records
     return []
 
 
@@ -34,7 +77,7 @@ def reassemble_tcp_segments(segments: list[tuple[int, bytes]]) -> bytes:
     return bytes(output)
 
 
-def _completed_achievement_ids(decoded: bytes, marker: int) -> list[str]:
+def _achievement_records(decoded: bytes, marker: int) -> list[AchievementRecord]:
     # The component header stores its record count before a fixed schema descriptor.
     if marker + RECORDS_OFFSET > len(decoded):
         return []
@@ -44,15 +87,21 @@ def _completed_achievement_ids(decoded: bytes, marker: int) -> list[str]:
     matches = list(ACHIEVEMENT_ID.finditer(decoded, marker + RECORDS_OFFSET))
     if len(matches) < count:
         return []
-    completed = []
+    records = []
     for match in matches[:count]:
-        # Each name is followed by progress, then a zero timestamp until completion.
+        # Each name is followed by an unsigned progress value and completion ticks.
+        progress_offset = match.end()
         ticks_offset = match.end() + COMPLETION_TICKS_OFFSET
         if ticks_offset + 8 > len(decoded):
             return []
-        if struct.unpack_from("<Q", decoded, ticks_offset)[0]:
-            completed.append(match.group(1).decode("ascii"))
-    return completed
+        records.append(
+            AchievementRecord(
+                achievement_id=match.group(1).decode("ascii"),
+                progress=struct.unpack_from("<Q", decoded, progress_offset)[0],
+                completion_ticks=struct.unpack_from("<Q", decoded, ticks_offset)[0],
+            )
+        )
+    return records
 
 
 def _game_data_blocks(stream: bytes):

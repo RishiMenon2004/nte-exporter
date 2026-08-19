@@ -16,6 +16,10 @@ def load_mapping_file(filename: str) -> dict[str, Any]:
 ARC_META: dict[str, dict[str, Any]] = load_mapping_file("arcs.json")
 CHARACTERS: dict[str, dict[str, Any]] = load_mapping_file("characters.json")
 ITEMS: dict[str, dict[str, Any]] = load_mapping_file("items.json")
+ACHIEVEMENTS: dict[str, dict[str, Any]] = load_mapping_file("achievements.json")
+ACHIEVEMENTS_BY_CASEFOLD = {
+    achievement_id.casefold(): meta for achievement_id, meta in ACHIEVEMENTS.items()
+}
 
 # Reward keys in Monopoly history packets are the reward id string itself
 # (ASCII*4 with carry, see decoder.protocol.decode_reward_key), so all reward

@@ -114,10 +114,17 @@ If a page response is missed, the exporter reports the missing page number while
 
 Start the live exporter before launching the game. The completed achievement
 list is loaded during login, captured automatically, and written to
-`exports/Achievements_*.json` as an array of achievement IDs. Completed
-PlayStation trophy entries are retained even though they are not shown in the
-in-game achievement list. The console reports the visible and PlayStation
-counts as soon as the list has been decoded.
+`exports/<user_uid>_Achievements_*.json` as a versioned achievement export with
+account metadata, completion totals, and records grouped by achievement category.
+Both completed and incomplete achievements are included with their current
+progress, status, and completion time when available. Generated metadata adds
+the localized title and description, target, quality, and rewards from the
+current `NTE_Assets` achievement table. Newly captured IDs that are not yet in
+the bundled mapping still export normally; only their optional display metadata
+is omitted until the mappings are refreshed.
+Completed PlayStation trophy entries are retained and identified separately
+even though they are not shown in the in-game achievement list. The console
+reports the visible and PlayStation counts as soon as the list has been decoded.
 
 #### Linux/macOS
 

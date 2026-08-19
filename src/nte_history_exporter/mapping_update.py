@@ -20,10 +20,11 @@ ASSET_TABLES = {
     "appearances": "DataTable/Character/Appearance/DT_AppearanceData.json",
     "illustrations": "DataTable/Gacha/GachaIllustrate.json",
     "mystery_box_pools": "DataTable/GashaponLottery/DT_GashaponLotteryGlobal.json",
+    "achievements": "DataTable/DT_AchievementConfigInfo.json",
     "vehicle_inventory": "DataTable/Vehicle/DT_VehicleItemData.json",
     "localization": "Localization/en/game.json",
 }
-REWARD_MAPPING_FILES = ("arcs.json", "characters.json", "items.json")
+MAPPING_FILES = ("arcs.json", "characters.json", "items.json", "achievements.json")
 RANK_BY_QUALITY = {
     "EItemQuality::ITEM_QUALITY_ORANGE": "S",
     "EItemQuality::ITEM_QUALITY_PURPLE": "A",
@@ -103,7 +104,7 @@ def load_assets(*, assets_root: Path | None = None, source_ref: str = DEFAULT_SO
 
 def load_current_mappings(directory: Path) -> dict[str, dict[str, dict[str, Any]]]:
     mappings = {}
-    for filename in REWARD_MAPPING_FILES:
+    for filename in MAPPING_FILES:
         path = directory / filename
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
@@ -126,13 +127,16 @@ def build_mapping_update(
         "arcs.json": _build_primary_mapping(assets.tables["arcs"], "arc", translations),
         "characters.json": _build_primary_mapping(assets.tables["characters"], "character", translations),
         "items.json": _build_item_mapping(assets.tables, translations),
+        "achievements.json": _build_achievement_mapping(
+            assets.tables["achievements"], translations
+        ),
     }
     validate_mappings(output)
 
     additions: dict[str, list[str]] = {}
     updates: dict[str, list[str]] = {}
     deletions: dict[str, list[str]] = {}
-    for filename in REWARD_MAPPING_FILES:
+    for filename in MAPPING_FILES:
         old = current[filename]
         new = output[filename]
         additions[filename] = sorted(new.keys() - old.keys(), key=str.casefold)
@@ -169,7 +173,7 @@ def build_mapping_update(
 
 def write_update(result: MappingUpdateResult, directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    for filename in REWARD_MAPPING_FILES:
+    for filename in MAPPING_FILES:
         _atomic_write(directory / filename, _dump_mapping(result.mappings[filename]))
     report_text = json.dumps(result.report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     _atomic_write(directory / "mapping-update-report.json", report_text)
@@ -180,11 +184,11 @@ def apply_update(result: MappingUpdateResult, directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     originals: dict[Path, bytes | None] = {}
     written: list[Path] = []
-    for filename in REWARD_MAPPING_FILES:
+    for filename in MAPPING_FILES:
         path = directory / filename
         originals[path] = path.read_bytes() if path.exists() else None
     try:
-        for filename in REWARD_MAPPING_FILES:
+        for filename in MAPPING_FILES:
             path = directory / filename
             _atomic_write(path, _dump_mapping(result.mappings[filename]))
             written.append(path)
@@ -199,11 +203,11 @@ def apply_update(result: MappingUpdateResult, directory: Path) -> None:
 
 
 def validate_mappings(mappings: dict[str, dict[str, dict[str, Any]]]) -> None:
-    if set(mappings) != set(REWARD_MAPPING_FILES):
-        raise MappingUpdateError(f"mapping set must be exactly {REWARD_MAPPING_FILES}")
+    if set(mappings) != set(MAPPING_FILES):
+        raise MappingUpdateError(f"mapping set must be exactly {MAPPING_FILES}")
     locations: dict[str, str] = {}
     folded: dict[str, str] = {}
-    for filename in REWARD_MAPPING_FILES:
+    for filename in MAPPING_FILES:
         entries = mappings[filename]
         if not isinstance(entries, dict):
             raise MappingUpdateError(f"{filename} must contain an object")
@@ -232,6 +236,33 @@ def validate_mappings(mappings: dict[str, dict[str, dict[str, Any]]]) -> None:
                     raise MappingUpdateError(f"{filename}:{item_id}.type must be item or cosmetic")
                 if rank not in {"S", "A", "B"}:
                     raise MappingUpdateError(f"{filename}:{item_id}.rank must be S, A, or B")
+            if filename == "achievements.json":
+                _validate_achievement_meta(filename, item_id, meta)
+
+
+def _validate_achievement_meta(filename: str, item_id: str, meta: dict[str, Any]) -> None:
+    for field in ("description", "category", "quality"):
+        if not isinstance(meta.get(field), str) or not meta[field].strip():
+            raise MappingUpdateError(
+                f"{filename}:{item_id}.{field} must be a non-empty string"
+            )
+    target = meta.get("target")
+    if not isinstance(target, (int, float)) or isinstance(target, bool) or target < 0:
+        raise MappingUpdateError(f"{filename}:{item_id}.target must be a non-negative number")
+    rewards = meta.get("rewards")
+    if not isinstance(rewards, list):
+        raise MappingUpdateError(f"{filename}:{item_id}.rewards must be a list")
+    for index, reward in enumerate(rewards):
+        if (
+            not isinstance(reward, dict)
+            or not isinstance(reward.get("item_id"), str)
+            or not reward["item_id"]
+            or not isinstance(reward.get("amount"), (int, float))
+            or isinstance(reward.get("amount"), bool)
+        ):
+            raise MappingUpdateError(
+                f"{filename}:{item_id}.rewards[{index}] is invalid"
+            )
 
 
 def _extract_rows(document: Any, relative_path: str) -> dict[str, Any]:
@@ -289,7 +320,12 @@ def _build_item_mapping(
     candidate_ids = _reward_candidate_ids(tables)
     for candidate_id in candidate_ids:
         folded = candidate_id.casefold()
-        if candidate_id.isdigit() or folded.startswith("fork_") or folded.startswith("characterawaken_"):
+        if (
+            candidate_id.isdigit()
+            or folded.startswith("fork_")
+            or folded.startswith("characterawaken_")
+            or folded.startswith("fashion_vehicle_")
+        ):
             continue
         sources = (inventory, capital, appearances, vehicle_inventory)
         match = next((source.get(folded) for source in sources if folded in source), None)
@@ -305,6 +341,62 @@ def _build_item_mapping(
             "rank": meta["rank"],
         }
     return dict(sorted(result.items(), key=lambda pair: (pair[0].casefold(), pair[0])))
+
+
+def _build_achievement_mapping(
+    rows: dict[str, Any],
+    translations: dict[str, list[tuple[str, str]]],
+) -> dict[str, dict[str, Any]]:
+    result = {}
+    for achievement_id in sorted(rows, key=lambda value: (value.casefold(), value)):
+        row = rows[achievement_id]
+        if not isinstance(row, dict):
+            raise MappingUpdateError(
+                f"NTE_Assets achievement row {achievement_id} must be an object"
+            )
+        title = row.get("TitleId")
+        description = row.get("ContentID")
+        if not isinstance(title, dict) or not isinstance(description, dict):
+            raise MappingUpdateError(
+                f"NTE_Assets achievement row {achievement_id} has no title or description"
+            )
+        target = row.get("Amout")
+        if not isinstance(target, (int, float)) or isinstance(target, bool):
+            raise MappingUpdateError(
+                f"NTE_Assets achievement row {achievement_id} has invalid Amout"
+            )
+        main_type = row.get("AchievementMainType")
+        quality = row.get("Quality")
+        if not isinstance(main_type, str) or "MainType" not in main_type:
+            raise MappingUpdateError(
+                f"NTE_Assets achievement row {achievement_id} has invalid main type"
+            )
+        if not isinstance(quality, str) or "::" not in quality:
+            raise MappingUpdateError(
+                f"NTE_Assets achievement row {achievement_id} has invalid quality"
+            )
+        rewards = []
+        for index, award in enumerate(row.get("AwardInfo", [])):
+            if not isinstance(award, dict):
+                raise MappingUpdateError(
+                    f"NTE_Assets achievement row {achievement_id} award {index} is invalid"
+                )
+            item_id = award.get("ItemID")
+            amount = award.get("Amount")
+            if not isinstance(item_id, str) or not item_id or not isinstance(amount, (int, float)):
+                raise MappingUpdateError(
+                    f"NTE_Assets achievement row {achievement_id} award {index} is invalid"
+                )
+            rewards.append({"item_id": item_id, "amount": amount})
+        result[achievement_id] = {
+            "name": _translate_name(achievement_id, title, translations),
+            "description": _translate_name(achievement_id, description, translations),
+            "category": main_type.rsplit("MainType", 1)[-1].casefold(),
+            "quality": quality.rsplit("::", 1)[-1].casefold(),
+            "target": target,
+            "rewards": rewards,
+        }
+    return result
 
 
 def _reward_candidate_ids(tables: dict[str, dict[str, Any]]) -> list[str]:

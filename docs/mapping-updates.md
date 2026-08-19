@@ -1,11 +1,12 @@
 # Reward mapping updates
 
-`tools/update_mappings.py` rebuilds `arcs.json`, `characters.json`, and
-`items.json` directly from the current
+`tools/update_mappings.py` rebuilds `arcs.json`, `characters.json`,
+`items.json`, and `achievements.json` directly from the current
 [`Waifus-Grace/NTE_Assets`](https://github.com/Waifus-Grace/NTE_Assets)
 tables.
 
-English display names come from `Localization/en/game.json`. The data tables
+English display names and achievement descriptions come from
+`Localization/en/game.json`. The data tables
 provide localization namespace/key references and quality metadata; their
 embedded `LocalizedString` values are deliberately ignored.
 
@@ -54,7 +55,7 @@ To use an existing local checkout without network access:
 python tools/update_mappings.py --assets-root path\to\NTE_Assets
 ```
 
-The default output is `build/mapping-update/` and contains the three candidate
+The default output is `build/mapping-update/` and contains the four candidate
 mapping files plus `mapping-update-report.json`. The report lists additions,
 updates, and deletions by file and records SHA-256 hashes for every source
 table.
@@ -71,6 +72,9 @@ from the committed reward mappings. It still writes the staged artifacts.
 
 ## Source rules
 
+- Every achievement in `DT_AchievementConfigInfo` is emitted to
+  `achievements.json` with its localized title and description, target,
+  category, quality, and rewards.
 - Every Arc in `DT_ForkItemData` is emitted to `arcs.json`.
 - Every character in `DT_Character` is emitted to `characters.json`.
 - Other pull rewards are selected by `GachaIllustrate` and resolved to the
@@ -85,13 +89,13 @@ from the committed reward mappings. It still writes the staged artifacts.
   currencies, are categorized as items.
 - Names are resolved strictly through `Localization/en/game.json`. A missing or
   ambiguous key fails the update instead of falling back to a DT value.
-- Character-awakening illustration entries are not independent pull rewards
-  and are excluded.
+- Character-awakening and character-vehicle illustration entries are not
+  independent pull rewards and are excluded.
 - Orange, purple, and blue item qualities map to `S`, `A`, and `B`.
 
 ## UID compatibility boundary
 
-This updater reads and writes only the three reward mapping files. It never
+This updater reads and writes only the generated reward and achievement mapping files. It never
 reads or writes the permanent, limited, beginner, or Arc pool mapping files.
 Banner IDs, timestamps, record ordering, format version, and all UID inputs are
 therefore unchanged by mapping synchronization.

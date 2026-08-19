@@ -86,6 +86,8 @@ Decoded fields:
   Arc/Gashapon history uses the same scheme at `ASCII * 2`.
 - The decoder decodes the key to its id string and looks up display metadata
   in `mappings/arcs.json`, `mappings/characters.json`, and `mappings/items.json`.
+  Achievement display metadata is generated separately in
+  `mappings/achievements.json`.
   Unknown rewards still export their decoded id with empty name/rank.
 
 Page and row numbers are research metadata only. They must not be used for permanent dedupe because they shift when new history appears.

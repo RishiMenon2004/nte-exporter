@@ -36,6 +36,7 @@ def sample_current():
             "DiceNormal": {"type": "item", "name": "Fabricated Dice", "rank": "S"},
             "OldTicket": {"type": "item", "name": "Retired Ticket", "rank": "B"},
         },
+        "achievements.json": {},
     }
 
 
@@ -54,11 +55,22 @@ class MappingUpdateTests(unittest.TestCase):
         self.assertNotIn("fork_retired", result.mappings["arcs.json"])
         self.assertNotIn("OldTicket", result.mappings["items.json"])
         self.assertNotEqual(result.mappings["characters.json"]["1003"], current["characters.json"]["1003"])
-        self.assertEqual(result.report["changes"], {"additions": 4, "updates": 2, "deletions": 3})
+        self.assertEqual(result.report["changes"], {"additions": 5, "updates": 2, "deletions": 3})
         self.assertIs(result.report["safety"]["authoritative_snapshot"], True)
         self.assertIs(result.report["safety"]["deletions_allowed"], True)
         self.assertIs(result.report["safety"]["uid_inputs_touched"], False)
         self.assertIs(result.report["safety"]["pool_mappings_touched"], False)
+        self.assertEqual(
+            result.mappings["achievements.json"]["battle_25"],
+            {
+                "name": "Devil Within II",
+                "description": "Trigger Hexed ×50.",
+                "category": "fight",
+                "quality": "high",
+                "target": 50,
+                "rewards": [{"item_id": "Annulith", "amount": 10}],
+            },
+        )
 
     def test_items_use_illustrations_as_filter_and_asset_tables_as_authority(self):
         _current, result = build_sample_update()
@@ -71,6 +83,7 @@ class MappingUpdateTests(unittest.TestCase):
         self.assertNotIn("DIceNormal", result.mappings["items.json"])
         self.assertNotIn("UnusedItem", result.mappings["items.json"])
         self.assertFalse(any(key.startswith("Characterawaken_") for key in result.mappings["items.json"]))
+        self.assertFalse(any(key.startswith("Fashion_vehicle_") for key in result.mappings["items.json"]))
 
     def test_future_mystery_box_pool_is_discovered_without_hard_coded_event_id(self):
         assets = load_assets(assets_root=SAMPLE_ASSETS)

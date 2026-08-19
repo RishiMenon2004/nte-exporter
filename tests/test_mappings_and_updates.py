@@ -1,4 +1,5 @@
 from tests.support import *  # noqa: F401,F403
+from nte_history_exporter.mappings import ACHIEVEMENTS
 
 
 class MappingAndUpdateTests(unittest.TestCase):
@@ -78,6 +79,14 @@ class MappingAndUpdateTests(unittest.TestCase):
                 self.assertTrue(character_id.isdigit())
                 self.assertIn("name", info)
                 self.assertIn(info.get("rank"), ("S", "A"))
+
+        self.assertTrue(ACHIEVEMENTS)
+        battle_25 = ACHIEVEMENTS["battle_25"]
+        self.assertEqual(battle_25["name"], "Devil Within II")
+        self.assertEqual(battle_25["target"], 50)
+        self.assertEqual(
+            battle_25["rewards"], [{"item_id": "Annulith", "amount": 10}]
+        )
 
         self.assertTrue(ITEMS)
         for item_id, info in ITEMS.items():

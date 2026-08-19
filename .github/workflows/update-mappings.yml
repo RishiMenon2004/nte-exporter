@@ -83,8 +83,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$AUTOMATION_BRANCH"
-          git add mappings/arcs.json mappings/characters.json mappings/items.json
-          git commit -m "chore: update reward mappings from NTE_Assets"
+          git add mappings/arcs.json mappings/characters.json mappings/items.json mappings/achievements.json
+          git commit -m "chore: update mappings from NTE_Assets"
           git push --force origin "HEAD:refs/heads/$AUTOMATION_BRANCH"
 
       - name: Open or update pull request
