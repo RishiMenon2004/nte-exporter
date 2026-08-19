@@ -187,6 +187,31 @@ class StructuredProtocolTests(unittest.TestCase):
         self.assertEqual(rows[0].item_id, "1003")
         self.assertEqual(rows[0].protocol_view, "shift8:3")
 
+    def test_shifted_parser_allows_missing_declared_protocol_padding(self):
+        cases = (
+            ("monopoly", monopoly_payload("1003,1"), 3, "1003"),
+            ("fork", fork_payload("fork_dustbin"), 2, "fork_dustbin"),
+        )
+        for record_type, raw_payload, shift, expected_item_id in cases:
+            with self.subTest(record_type=record_type):
+                payload_with_declared_padding = bytearray(raw_payload)
+                marker = MONOPOLY_MARKER if record_type == "monopoly" else FORK_MARKER
+                declared_size_pos = len(marker) + 1 + 4
+                declared_size = int.from_bytes(
+                    payload_with_declared_padding[declared_size_pos : declared_size_pos + 4],
+                    "little",
+                )
+                payload_with_declared_padding[
+                    declared_size_pos : declared_size_pos + 4
+                ] = (declared_size + 3).to_bytes(4, "little")
+
+                packed = bit_pack_after_eight_byte_header(
+                    bytes(payload_with_declared_padding), shift
+                )
+                rows = parse_structured_records(packed, record_type)
+
+                self.assertEqual([row.item_id for row in rows], [expected_item_id])
+
     def test_protocol_envelope_exposes_stream_and_segment_identity(self):
         payload = enveloped_monopoly_payload("1003", page_index=2, query_high=False)
 
