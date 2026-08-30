@@ -151,9 +151,24 @@ def extract_dice(chunk_without_marker: bytes) -> tuple[int | None, int | None, i
     if prefixed_dice_raw is not None:
         return (0 if prefixed_dice_raw == 0 else prefixed_dice_raw // 4), prefixed_dice_raw, 9
 
-    for off in range(0, min(16, max(0, len(chunk_without_marker) - 3))):
+    if not chunk_without_marker:
+        return None, None, None
+
+    first_byte = chunk_without_marker[0]
+    offset_map = {0x40: 20, 0x38: 18, 0x91: 18, 0x30: 16}
+    dice_offset = offset_map.get(first_byte)
+    if dice_offset is not None:
+        check_offsets = (0, dice_offset, 5, 10, 9)
+        zero_offsets = (5, 9, 10, dice_offset)
+    else:
+        check_offsets = (0, 5, 10, 9)
+        zero_offsets = (5, 9, 10)
+
+    for off in check_offsets:
+        if off + 4 > len(chunk_without_marker):
+            continue
         val = struct.unpack_from("<I", chunk_without_marker, off)[0]
-        if val in VALID_DICE_FIELDS:
+        if val in VALID_DICE_FIELDS and (val != 0 or off in zero_offsets):
             return (0 if val == 0 else val // 4), val, off
     return None, None, None
 
