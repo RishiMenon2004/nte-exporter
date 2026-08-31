@@ -23,7 +23,7 @@ from nte_history_exporter.decoder.structured_protocol import (
 
 REWARD_ID_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
 WARP_PIECE_CHASE_PATTERN = bytes.fromhex(
-    "c4b0ccc00000000000040000003c00000010a58d957dd1a58dad95d17dc1c400"
+    "c1c4b0ccc00000000000040000003c00000010a58d957dd1a58dad95d17dc1c400"
 )
 
 
@@ -181,7 +181,10 @@ def classify_result_type(
 ) -> tuple[str, int | None]:
     if dice is None or dice_offset is None:
         return "unknown", None
-    if reward_id.casefold() == "dice_ticket_01" and WARP_PIECE_CHASE_PATTERN in chunk_without_marker:
+    if reward_id.casefold() == "dice_ticket_01" and (
+        chunk_without_marker.startswith(WARP_PIECE_CHASE_PATTERN[5:])
+        or chunk_without_marker.startswith(WARP_PIECE_CHASE_PATTERN)
+    ):
         return "chase_reward", -4
     if dice == 0:
         return "points_gift", 0
