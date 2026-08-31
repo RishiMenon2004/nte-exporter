@@ -155,7 +155,7 @@ def extract_dice(chunk_without_marker: bytes) -> tuple[int | None, int | None, i
         return None, None, None
 
     first_byte = chunk_without_marker[0]
-    offset_map = {0x40: 20, 0x38: 18, 0x91: 18, 0x30: 16}
+    offset_map = {0x40: 20, 0x38: 18, 0x91: 18, 0x30: 16, 0x48: 22}
     dice_offset = offset_map.get(first_byte)
     if dice_offset is not None:
         check_offsets = (0, dice_offset, 5, 10, 9)
