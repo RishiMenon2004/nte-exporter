@@ -103,12 +103,14 @@ def decode_mitmproxy_flows(path: str | Path, flow_index: int | None = None) -> d
     local_port = 50000
     remote_port = 40000
     session = LiveHistorySession(local_ip)
+    packets: list[UdpPacket] = []
     for msg in messages:
         from_client, content, ts = msg
         if from_client:
             packet = UdpPacket(ts, local_ip, remote_ip, local_port, remote_port, content)
         else:
             packet = UdpPacket(ts, remote_ip, local_ip, remote_port, local_port, content)
+        packets.append(packet)
         session.process_packet(packet)
 
     pairs = [
@@ -144,4 +146,5 @@ def decode_mitmproxy_flows(path: str | Path, flow_index: int | None = None) -> d
         "user_uid": session.user_uid or user_uid,
         "server_id": session.server_id or server_id,
         "capture_diagnostics": session.diagnostic_report(),
+        "packets": packets,
     }

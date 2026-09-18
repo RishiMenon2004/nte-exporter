@@ -21,6 +21,7 @@ from nte_history_exporter.export.json_export import (
 )
 from nte_history_exporter.live_capture.backends import open_capture_backend
 from nte_history_exporter.live_capture.diagnostics import new_diagnostics_path, write_capture_diagnostics
+from nte_history_exporter.live_capture.payload_export import write_payload_capture
 from nte_history_exporter.live_capture.session import LiveHistorySession, UdpPacket
 from nte_history_exporter.live_capture.stop_key import StopKeyMonitor
 from nte_history_exporter.live_capture.windows_raw import detect_local_ipv4
@@ -88,6 +89,7 @@ def run_live_capture(
     active_gap_notices: set[str] = set()
     tcp_segments: dict[tuple[str, int, str, int], list[tuple[int, bytes]]] = {}
     achievement_records = []
+    captured_packets: list[UdpPacket] = []
 
     try:
         with StopKeyMonitor() as stop_key:
@@ -134,18 +136,19 @@ def run_live_capture(
                                     for record in playstation
                                 ),
                             )
-                pair_count_before = len(session.pairs)
-                matched = session.process_packet(
-                    UdpPacket(
-                        timestamp=time.time(),
-                        src_ip=packet.src_ip,
-                        dst_ip=packet.dst_ip,
-                        src_port=packet.src_port,
-                        dst_port=packet.dst_port,
-                        payload=packet.payload,
-                        protocol=packet.protocol,
-                    )
+                udp_packet = UdpPacket(
+                    timestamp=time.time(),
+                    src_ip=packet.src_ip,
+                    dst_ip=packet.dst_ip,
+                    src_port=packet.src_port,
+                    dst_port=packet.dst_port,
+                    payload=packet.payload,
+                    protocol=packet.protocol,
                 )
+                if write_debug_csv and packet.protocol == "udp":
+                    captured_packets.append(udp_packet)
+                pair_count_before = len(session.pairs)
+                matched = session.process_packet(udp_packet)
                 if matched:
                     affected_kinds = []
                     for pair in session.pairs[pair_count_before:]:
@@ -179,9 +182,15 @@ def run_live_capture(
     exports = []
     achievement_path = None
     diagnostics_path = None
+    payloads_path = None
     if write_debug_csv:
         diagnostics_path = new_diagnostics_path()
         write_capture_diagnostics(diagnostics_path, session.diagnostic_report())
+        payloads_path = diagnostics_path.with_name(
+            diagnostics_path.name.replace(".diagnostics.json", ".payloads.json")
+        )
+        uids = [u for u in (user_uid, session.user_uid) if u]
+        write_payload_capture(payloads_path, captured_packets, local_ip, known_uids=uids)
     resolved_user_uid = user_uid or session.user_uid
     if (session.kinds_seen() or achievement_records) and not resolved_user_uid:
         resolved_user_uid = console.prompt_user_uid()
@@ -229,6 +238,7 @@ def run_live_capture(
                 "kind": kind,
                 "csv_path": csv_path if write_debug_csv else None,
                 "diagnostics_path": diagnostics_path if write_debug_csv else None,
+                "payloads_path": payloads_path if write_debug_csv else None,
                 "json_path": json_path,
                 "export": export,
                 "payload": payload,
@@ -257,9 +267,12 @@ def run_live_capture(
             console.print_note("If no page messages appear, return to the main menu and re-enter the game.")
         if diagnostics_path is not None:
             console.print_note(f"Diagnostics written: {diagnostics_path}")
+        if payloads_path is not None:
+            console.print_note(f"Replay payloads written: {payloads_path}")
         return {
             "exports": [],
             "diagnostics_path": diagnostics_path,
+            "payloads_path": payloads_path,
             "achievement_path": achievement_path,
         }
 
@@ -284,6 +297,8 @@ def run_live_capture(
         console.print_note(f"Export written: {achievement_path}")
     if diagnostics_path is not None:
         console.print_note(f"Diagnostics written: {diagnostics_path}")
+    if payloads_path is not None:
+        console.print_note(f"Replay payloads written: {payloads_path}")
 
     if copy_clipboard and len(exports) == 1:
         if copy_to_clipboard(exports[0]["payload"]):
@@ -296,6 +311,7 @@ def run_live_capture(
     return {
         "exports": exports,
         "diagnostics_path": diagnostics_path,
+        "payloads_path": payloads_path,
         "achievement_path": achievement_path,
     }
 
