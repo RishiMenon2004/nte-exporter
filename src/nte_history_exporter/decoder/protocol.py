@@ -177,8 +177,13 @@ def extract_dice(chunk_without_marker: bytes) -> tuple[int | None, int | None, i
     if not chunk_without_marker:
         return None, None, None
 
+    if chunk_without_marker.startswith(b"\xc4\xc0") and len(chunk_without_marker) >= 13:
+        val = struct.unpack_from("<I", chunk_without_marker, 9)[0]
+        if val in VALID_DICE_FIELDS:
+            return (0 if val == 0 else val // 4), val, 9
+
     first_byte = chunk_without_marker[0]
-    offset_map = {0x40: 20, 0x38: 18, 0x91: 18, 0x30: 16, 0x48: 22}
+    offset_map = {0x30: 16, 0x38: 18, 0x3c: 19, 0x40: 20, 0x44: 21, 0x48: 22, 0x91: 18}
     dice_offset = offset_map.get(first_byte)
     if dice_offset is not None:
         check_offsets = (0, dice_offset, 5, 10, 9)
@@ -286,7 +291,8 @@ def _decode_aligned_response_records(response_content: bytes) -> list[dict[str, 
                         (
                             -key_count,
                             not candidate_is_page_first,
-                            candidate_offset != 5,
+                            candidate_offset not in (5, 9),
+                            candidate_dice == 0,
                             key_position,
                             -trim,
                             trim,
@@ -297,7 +303,7 @@ def _decode_aligned_response_records(response_content: bytes) -> list[dict[str, 
                         )
                     )
             if embedded_candidates:
-                _, _, _, _, _, trim, chunk, dice, dice_raw, dice_offset = min(embedded_candidates)
+                *_, trim, chunk, dice, dice_raw, dice_offset = min(embedded_candidates)
                 record_start = prev + trim
                 full_record = response_content[prev + trim : marker_offset + len(marker) + 8]
         key_hex = extract_key(chunk)
