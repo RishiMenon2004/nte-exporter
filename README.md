@@ -161,7 +161,9 @@ sudo .venv/bin/nte-history-exporter
 
 macOS normally includes libpcap. On Linux, install the distribution's libpcap runtime package if it is not already present. Capture can also be granted through platform-specific capabilities instead of running the whole exporter with `sudo`.
 
-### File replay
+### File replay and offline research
+
+#### mitmproxy flows
 
 Downloaded executable:
 
@@ -177,12 +179,26 @@ From source:
 
 Decodes a `mitmproxy .flows` capture instead of listening live — used for research and testing.
 
+#### Captured UDP payloads
+
+Replay any sanitized UDP payload capture (`Capture_*.payloads.json` or `capture.json`) through the decoder offline without running the game:
+
+```powershell
+python tools/replay_payloads.py exports/Capture_*.payloads.json [--debug]
+```
+
+You can also record raw UDP history traffic directly into a replayable JSON file using:
+
+```powershell
+python tools/capture_payloads.py [--out exports/capture.json]
+```
+
 ### Options
 
 | Flag      | Effect                                              |
 | --------- | --------------------------------------------------- |
 | `--live`  | Capture live traffic, including achievements loaded at login. |
-| `--debug` | Also write the research CSV and privacy-safe capture diagnostics. |
+| `--debug` | Also write the research CSV, privacy-safe capture diagnostics, and sanitized replay payloads. |
 | `--user-uid <uid>` | Override the auto-detected NTE user UID in the JSON export. |
 | `--copy-clipboard` | Copy a single live export JSON to clipboard after saving. |
 
@@ -194,10 +210,10 @@ Advanced live-capture selection:
 --capture-backend raw       Require the Windows raw-socket backend
 ```
 
-The `--debug` CSV holds decoded research fields, including raw captured history
-records. A separate versioned `*.diagnostics.json` sidecar provides shareable
-reason codes and counts without payloads, network addresses, ports, packet
-timestamps, or user UID values. See [Capture diagnostics](docs/capture-diagnostics.md).
+The `--debug` flag writes three sidecars under `exports/`:
+1. **Research CSV** (`<uid>_<banner>_<timestamp>.csv`): decoded research fields and raw captured records.
+2. **Capture diagnostics** (`Capture_*.diagnostics.json`): shareable reason codes and packet counts without payloads, network addresses, ports, timestamps, or user UIDs.
+3. **Sanitized replay payloads** (`Capture_*.payloads.json`): sanitized UDP packet payloads scrubbed of real IPs, ports, and user UIDs, ready for offline debugging and regression tests with `tools/replay_payloads.py`. See [Capture diagnostics](docs/capture-diagnostics.md).
 
 The exporter automatically includes the shareable NTE user UID when it appears in the capture. If a short capture does not include it, the console asks before saving; you can also pass it explicitly with `--user-uid`.
 
@@ -245,6 +261,7 @@ For Monopoly, Points Gift and Chase Reward rows stay in the timestamp group for 
 
 - Live Npcap/libpcap capture on Windows, Linux, and macOS
 - Live Windows raw-socket fallback
+- Sanitized UDP payload capture and offline replay (`tools/capture_payloads.py`, `tools/replay_payloads.py`)
 - `mitmproxy .flows` research decoder
 
 **Planned**
