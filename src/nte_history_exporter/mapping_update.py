@@ -301,11 +301,25 @@ def _build_primary_mapping(
 ) -> dict[str, dict[str, Any]]:
     result = {}
     for item_id in sorted(rows, key=lambda value: (value.casefold(), value)):
+        if _has_placeholder_name(rows[item_id]):
+            continue
         meta = _normalise_row(item_id, rows[item_id], translations)
         if kind == "character" and meta["rank"] not in {"S", "A"}:
             raise MappingUpdateError(f"unexpected character quality for {item_id}")
         result[item_id] = {"name": meta["name"], "rank": meta["rank"]}
     return result
+
+
+def _has_placeholder_name(row: Any, field: str = "ItemName") -> bool:
+    """Unreleased rows and unset overrides ship an empty culture-invariant name instead of a localization key."""
+    if not isinstance(row, dict):
+        return False
+    item_name = row.get(field)
+    return (
+        isinstance(item_name, dict)
+        and set(item_name) == {"CultureInvariantString"}
+        and not item_name["CultureInvariantString"]
+    )
 
 
 def _build_item_mapping(
@@ -328,7 +342,7 @@ def _build_item_mapping(
             continue
         if folded.startswith("fashion_vehicle_"):
             illustration = tables["illustrations"].get(candidate_id)
-            if illustration is not None:
+            if illustration is not None and not _has_placeholder_name(illustration, "ItemName_Override"):
                 vehicle_meta = _normalise_vehicle_livery(candidate_id, illustration, translations)
                 if vehicle_meta is None:
                     continue

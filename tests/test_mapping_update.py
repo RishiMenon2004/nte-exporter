@@ -148,6 +148,42 @@ class MappingUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(MappingUpdateError, "English localization is missing"):
             build_mapping_update(sample_current(), replace(assets, tables=tables))
 
+    def test_unreleased_rows_with_placeholder_names_are_skipped(self):
+        assets = load_assets(assets_root=SAMPLE_ASSETS)
+        tables = deepcopy(assets.tables)
+        tables["characters"]["1999"] = deepcopy(tables["characters"]["1003"])
+        tables["characters"]["1999"]["ItemName"] = {"CultureInvariantString": None}
+
+        result = build_mapping_update(sample_current(), replace(assets, tables=tables))
+
+        self.assertNotIn("1999", result.mappings["characters.json"])
+
+    def test_vehicle_livery_without_name_override_falls_back_to_item_tables(self):
+        assets = load_assets(assets_root=SAMPLE_ASSETS)
+        tables = deepcopy(assets.tables)
+        tables["illustrations"]["Fashion_vehicle_1010_V008"]["ItemName_Override"] = {
+            "CultureInvariantString": None
+        }
+        tables["inventory"]["Fashion_vehicle_1010_V008"] = {
+            "ItemName": {"TableId": "/Game/Text/ST_VehicleData.ST_VehicleData", "Key": "vehicle_1010_livery"},
+            "ItemQuality": "EItemQuality::ITEM_QUALITY_ORANGE",
+        }
+
+        result = build_mapping_update(sample_current(), replace(assets, tables=tables))
+
+        self.assertEqual(
+            result.mappings["items.json"]["Fashion_vehicle_1010_V008"],
+            {"type": "cosmetic", "name": "Tiger Incoming! - Livery", "rank": "S"},
+        )
+
+    def test_mapping_update_rejects_name_without_localization_key(self):
+        assets = load_assets(assets_root=SAMPLE_ASSETS)
+        tables = deepcopy(assets.tables)
+        del tables["characters"]["1003"]["ItemName"]["Key"]
+
+        with self.assertRaisesRegex(MappingUpdateError, "1003 has no localization key"):
+            build_mapping_update(sample_current(), replace(assets, tables=tables))
+
     def test_mapping_update_rejects_ambiguous_translation_without_namespace_match(self):
         assets = load_assets(assets_root=SAMPLE_ASSETS)
         tables = deepcopy(assets.tables)
