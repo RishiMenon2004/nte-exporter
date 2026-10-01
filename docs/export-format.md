@@ -15,7 +15,7 @@ decoder-only offsets.
   "capture_source": "npcap",
   "exporter": {
     "name": "nte-history-exporter",
-    "version": "0.3.3"
+    "version": "0.3.4"
   },
   "banner": {
     "id": "Lottery_Permanent",
@@ -198,7 +198,7 @@ mapping are not synthesized into the export.
   "capture_source": "npcap",
   "exporter": {
     "name": "nte-history-exporter",
-    "version": "0.3.3"
+    "version": "0.3.4"
   },
   "scan": {
     "in_game": {
