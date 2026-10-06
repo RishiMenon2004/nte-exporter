@@ -8,7 +8,11 @@ from datetime import datetime
 from pathlib import Path
 
 from nte_history_exporter import console
-from nte_history_exporter.constants import POOL_META
+from nte_history_exporter.constants import (
+    history_base_kind,
+    history_kind_meta,
+    history_kind_pool_id,
+)
 from nte_history_exporter.decoder.achievement import (
     extract_achievement_records,
     reassemble_tcp_segments,
@@ -154,7 +158,7 @@ def run_live_capture(
                     for pair in session.pairs[pair_count_before:]:
                         page = pair[0]
                         kind = pair[7] if len(pair) > 7 else "permanent"
-                        label = POOL_META.get(kind, POOL_META["permanent"])["name"]
+                        label = history_kind_meta(kind)["name"]
                         was_replacement = any(
                             existing[0] == page
                             and (existing[7] if len(existing) > 7 else "permanent") == kind
@@ -165,7 +169,7 @@ def run_live_capture(
                             affected_kinds.append(kind)
 
                     for kind in affected_kinds:
-                        label = POOL_META.get(kind, POOL_META["permanent"])["name"]
+                        label = history_kind_meta(kind)["name"]
                         missing_pages = tuple(session.missing_pages(kind))
                         previously_missing = reported_missing_pages.get(kind, ())
                         if missing_pages and kind not in active_gap_notices:
@@ -211,14 +215,8 @@ def run_live_capture(
     if session.kinds_seen() and not resolved_server_id:
         resolved_server_id = console.prompt_server_id()
     capture_source = CAPTURE_SOURCE_LABELS.get(capture.name, capture.name)
-    for kind in session.kinds_seen():
-        pairs = session.pairs_for_kind(kind)
-        best_run, run_warnings = select_continuous_run_from_page_1(pairs)
-        rows = session.build_rows(kind)
-        if kind not in {"arc_miracle_box", "mystery_box"}:
-            rows = annotate_groups(rows)
-        warnings = run_warnings
-        pages_seen = [p[0] for p in best_run]
+    for kind in session.export_kinds():
+        rows, warnings, pages_seen, pools = collect_export_rows(session, kind)
         csv_path, json_path = export_paths(kind, resolved_user_uid)
         if write_debug_csv:
             write_csv(csv_path, rows)
@@ -230,6 +228,7 @@ def run_live_capture(
             user_uid=resolved_user_uid,
             server_id=resolved_server_id,
             pages_seen=pages_seen,
+            pools=pools,
         )
         payload = json.dumps(export, ensure_ascii=False, indent=2)
         json_path.write_text(payload, encoding="utf-8")
@@ -327,6 +326,32 @@ def _achievement_path(user_uid: str | None = None) -> Path:
         path = export_dir / f"{base.name}_{counter}.json"
         counter += 1
     return path
+
+
+def collect_export_rows(
+    session: LiveHistorySession, export_kind: str
+) -> tuple[list[dict], list[dict], list[int] | None, list[dict] | None]:
+    rows: list[dict] = []
+    warnings: list[dict] = []
+    pages_seen: list[int] | None = None
+    pools: list[dict] = []
+    for kind in session.kinds_seen():
+        if history_base_kind(kind) != export_kind:
+            continue
+        best_run, run_warnings = select_continuous_run_from_page_1(session.pairs_for_kind(kind))
+        kind_rows = session.build_rows(kind)
+        if export_kind not in {"arc_miracle_box", "mystery_box"}:
+            kind_rows = annotate_groups(kind_rows)
+        rows += kind_rows
+        warnings += run_warnings
+        pages = [p[0] for p in best_run]
+        if pool_id := history_kind_pool_id(kind):
+            pools.append(
+                {"pool_id": pool_id, "pages_seen": pages, "exported_records": len(kind_rows)}
+            )
+        else:
+            pages_seen = pages
+    return rows, warnings, pages_seen, pools or None
 
 
 def export_paths(kind: str, user_uid: str | None = None) -> tuple[Path, Path]:

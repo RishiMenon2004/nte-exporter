@@ -22,7 +22,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from nte_history_exporter import console
-from nte_history_exporter.constants import POOL_META
+from nte_history_exporter.constants import history_kind_meta
 from nte_history_exporter.live_capture.backends import open_capture_backend
 from nte_history_exporter.live_capture.payload_export import write_payload_capture
 from nte_history_exporter.live_capture.runner import detect_local_ipv4
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
                 for pair in session.pairs[pair_count_before:]:
                     page = pair[0]
                     kind = pair[7] if len(pair) > 7 else "permanent"
-                    label = POOL_META.get(kind, POOL_META["permanent"])["name"]
+                    label = history_kind_meta(kind)["name"]
                     was_replacement = any(
                         existing[0] == page
                         and (existing[7] if len(existing) > 7 else "permanent") == kind
@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
                         affected_kinds.append(kind)
 
                 for kind in affected_kinds:
-                    label = POOL_META.get(kind, POOL_META["permanent"])["name"]
+                    label = history_kind_meta(kind)["name"]
                     missing_pages = tuple(session.missing_pages(kind))
                     previously_missing = reported_missing_pages.get(kind, ())
                     if missing_pages and kind not in active_gap_notices:
@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         console.print_note("Reopen a supported history screen and scroll from page 1.")
         return 0
     for kind in kinds:
-        label = POOL_META.get(kind, POOL_META["permanent"])["name"]
+        label = history_kind_meta(kind)["name"]
         pages = [pair[0] for pair in session.best_run(kind)]
         missing = session.missing_pages(kind)
         page_text = ", ".join(str(page) for page in pages) if pages else "none"

@@ -48,6 +48,20 @@ POOL_META = {
     },
 }
 
+
+def history_base_kind(kind: str) -> str:
+    return kind.partition(":")[0]
+
+
+def history_kind_pool_id(kind: str) -> str:
+    return kind.partition(":")[2]
+
+
+def history_kind_meta(kind: str) -> dict:
+    meta = POOL_META.get(history_base_kind(kind), POOL_META["permanent"])
+    pool_id = history_kind_pool_id(kind)
+    return {**meta, "name": f"{meta['name']} ({pool_id})"} if pool_id else meta
+
 ARC_HISTORY_REQUEST_BANNER = 2060
 ARC_HISTORY_REQUEST_LENGTH = 34
 ARC_HISTORY_CURSOR_OFFSET = 29
@@ -62,6 +76,11 @@ MYSTERY_BOX_HISTORY_CURSOR_OFFSET = 31
 MYSTERY_BOX_HISTORY_PAGE_CURSOR_MULTIPLIER = 2
 MYSTERY_BOX_HISTORY_REQUEST_KIND_OFFSET = 35
 MYSTERY_BOX_HISTORY_REQUEST_KIND = 2110
+MYSTERY_BOX_POOL_REQUEST_TAG_OFFSET = 35
+MYSTERY_BOX_POOL_REQUEST_TAG = 0x1E
+MYSTERY_BOX_POOL_REQUEST_ID_LENGTH_OFFSET = 40
+MYSTERY_BOX_POOL_REQUEST_PAGE_SIZE = 10
+MAX_MYSTERY_BOX_POOL_ID_LENGTH = 64
 MYSTERY_BOX_MARKER = b"FGashaponLotteryRecordData"
 
 TIMESTAMP_TICKS_PER_SECOND = 40_000_000
