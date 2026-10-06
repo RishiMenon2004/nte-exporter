@@ -23,12 +23,14 @@ from nte_history_exporter.decoder.run import build_rows_from_pairs
 from nte_history_exporter.decoder.mystery_box import (
     build_mystery_box_rows_from_pairs,
     is_mystery_box_history_request,
+    mystery_box_history_kind,
     mystery_box_request_page,
+    mystery_box_request_pool_id,
     parse_mystery_box_response,
     select_continuous_mystery_box_run,
 )
 from nte_history_exporter.decoder.structured_protocol import FORK_MARKER, MONOPOLY_MARKER
-from nte_history_exporter.constants import MYSTERY_BOX_MARKER
+from nte_history_exporter.constants import MYSTERY_BOX_MARKER, history_base_kind
 from nte_history_exporter.decoder.user_uid import extract_user_uid_candidates
 from nte_history_exporter.decoder.server_region import extract_server_id
 from nte_history_exporter.live_capture.diagnostics import CaptureDiagnostics
@@ -185,7 +187,7 @@ class LiveHistorySession:
             req = PendingRequest(
                 page=page,
                 offset=page * 2,
-                kind="mystery_box",
+                kind=mystery_box_history_kind(mystery_box_request_pool_id(packet.payload)),
                 request_msg=self.packet_count,
                 request_time=packet.timestamp,
                 src_ip=packet.src_ip,
@@ -239,14 +241,18 @@ class LiveHistorySession:
             candidates = [
                 req
                 for req in connection_candidates
-                if req.kind not in {"arc_miracle_box", "mystery_box"}
+                if history_base_kind(req.kind) not in {"arc_miracle_box", "mystery_box"}
             ]
             records = monopoly_records
         elif arc_records:
             candidates = [req for req in connection_candidates if req.kind == "arc_miracle_box"]
             records = arc_records
         elif mystery_box_records:
-            candidates = [req for req in connection_candidates if req.kind == "mystery_box"]
+            pool_kinds = {
+                mystery_box_history_kind(record.get("structured_pool_id", ""))
+                for record in mystery_box_records
+            }
+            candidates = [req for req in connection_candidates if req.kind in pool_kinds]
             records = mystery_box_records
         else:
             candidates = connection_candidates
@@ -361,6 +367,9 @@ class LiveHistorySession:
                 seen.append(kind)
         return seen
 
+    def export_kinds(self) -> list[str]:
+        return list(dict.fromkeys(history_base_kind(kind) for kind in self.kinds_seen()))
+
     def pairs_for_kind(self, kind: str) -> list[tuple]:
         return [pair for pair in self.pairs if (pair[7] if len(pair) > 7 else "permanent") == kind]
 
@@ -392,7 +401,7 @@ class LiveHistorySession:
         if kind == "arc_miracle_box":
             best_run, _warnings = select_continuous_arc_run(self.pairs_for_kind(kind))
             return build_arc_rows_from_pairs(best_run)
-        if kind == "mystery_box":
+        if kind and history_base_kind(kind) == "mystery_box":
             best_run, _warnings = select_continuous_mystery_box_run(self.pairs_for_kind(kind))
             return build_mystery_box_rows_from_pairs(best_run)
         return build_rows_from_pairs(self.best_run(kind))

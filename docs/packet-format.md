@@ -131,8 +131,11 @@ Pages are anchored to the continuous run starting at page 1 (history always load
 - Request constant: `2060` / `0x080c` at offset 26.
 - Request kind: `2110` / `0x083e` at offset 35.
 - Request cursor: offset 31, with a step of `2`; page is `cursor / 2`.
+- v1.4+: the kind is replaced by a pool ID string (`ASCII * 2`) at offset 40,
+  e.g. `MangHe_bsj2`.
 - Responses contain an `FGashaponLotteryRecordData` structured block.
 - Each row contains the reward ID, exact quantity, a record flag, and a standard .NET timestamp.
+- v1.4+: each row also ends with the pool ID and an unknown u32.
 - Every row is one single pull regardless of its reward quantity.
 - A full response page contains 5 rows; the final page may contain 1–4 rows.
-- History is exported under `Gashapon_MysteryBox` without attempting to infer or split rotations.
+- History is exported under `Gashapon_MysteryBox`, with all pools in one file.

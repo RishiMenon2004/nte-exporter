@@ -170,6 +170,7 @@ Mystery Box:
 {
   "uid": "2610c6e96afd64aa4a53fb9e8cebe031",
   "pool_group_id": "Gashapon_MysteryBox",
+  "pool_id": "MangHe_bsj2",
   "timestamp": "2026-07-08 19:09:33",
   "timestamp_group_ordinal": 0,
   "result_type": "single_pull",
@@ -181,6 +182,9 @@ Mystery Box:
   "source_type": "mystery_box"
 }
 ```
+
+All Mystery Box pools are exported to one file. `pool_id` identifies each
+record's pool, and `scan.pools` lists the pages seen per pool.
 
 ## Achievement export
 

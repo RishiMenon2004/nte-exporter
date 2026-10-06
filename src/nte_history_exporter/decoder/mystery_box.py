@@ -19,6 +19,11 @@ from nte_history_exporter.constants import (
     MYSTERY_BOX_HISTORY_REQUEST_KIND_OFFSET,
     MYSTERY_BOX_HISTORY_REQUEST_LENGTH,
     MYSTERY_BOX_MARKER,
+    MYSTERY_BOX_POOL_REQUEST_ID_LENGTH_OFFSET,
+    MYSTERY_BOX_POOL_REQUEST_PAGE_SIZE,
+    MYSTERY_BOX_POOL_REQUEST_TAG,
+    MYSTERY_BOX_POOL_REQUEST_TAG_OFFSET,
+    MAX_MYSTERY_BOX_POOL_ID_LENGTH,
     POOL_META,
 )
 from nte_history_exporter.decoder.boundary import select_continuous_run_from_page_1
@@ -32,12 +37,51 @@ MAX_REWARD_ID_LENGTH = 256
 def is_mystery_box_history_request(content: bytes) -> bool:
     if len(content) < MYSTERY_BOX_HISTORY_REQUEST_LENGTH:
         return False
-    return (
+    if (
         struct.unpack_from("<I", content, MYSTERY_BOX_HISTORY_REQUEST_CONSTANT_OFFSET)[0]
-        == MYSTERY_BOX_HISTORY_REQUEST_CONSTANT
-        and struct.unpack_from("<I", content, MYSTERY_BOX_HISTORY_REQUEST_KIND_OFFSET)[0]
+        != MYSTERY_BOX_HISTORY_REQUEST_CONSTANT
+    ):
+        return False
+    if (
+        struct.unpack_from("<I", content, MYSTERY_BOX_HISTORY_REQUEST_KIND_OFFSET)[0]
         == MYSTERY_BOX_HISTORY_REQUEST_KIND
+    ):
+        return True
+    return _is_pool_history_request(content)
+
+
+def _is_pool_history_request(content: bytes) -> bool:
+    if (
+        len(content) < MYSTERY_BOX_HISTORY_REQUEST_LENGTH
+        or content[MYSTERY_BOX_POOL_REQUEST_TAG_OFFSET] != MYSTERY_BOX_POOL_REQUEST_TAG
+    ):
+        return False
+    # Pool ID length and bytes are both doubled on the wire (ASCII * 2).
+    encoded_length = struct.unpack_from("<I", content, MYSTERY_BOX_POOL_REQUEST_ID_LENGTH_OFFSET)[0]
+    if encoded_length % 2 or not 2 <= encoded_length <= MAX_MYSTERY_BOX_POOL_ID_LENGTH * 2:
+        return False
+    id_start = MYSTERY_BOX_POOL_REQUEST_ID_LENGTH_OFFSET + 4
+    trailer = id_start + encoded_length // 2
+    if trailer + 9 > len(content) or content[trailer - 1] != 0:
+        return False
+    return (
+        struct.unpack_from("<I", content, trailer)[0] == MYSTERY_BOX_HISTORY_REQUEST_CONSTANT
+        and struct.unpack_from("<I", content, trailer + 5)[0]
+        == MYSTERY_BOX_POOL_REQUEST_PAGE_SIZE
     )
+
+
+def mystery_box_request_pool_id(content: bytes) -> str:
+    if not _is_pool_history_request(content):
+        return ""
+    encoded_length = struct.unpack_from("<I", content, MYSTERY_BOX_POOL_REQUEST_ID_LENGTH_OFFSET)[0]
+    id_start = MYSTERY_BOX_POOL_REQUEST_ID_LENGTH_OFFSET + 4
+    encoded = content[id_start : id_start + encoded_length // 2 - 1]
+    return bytes(value // 2 for value in encoded).decode("ascii", errors="replace")
+
+
+def mystery_box_history_kind(pool_id: str) -> str:
+    return f"mystery_box:{pool_id}" if pool_id else "mystery_box"
 
 
 def mystery_box_request_page(content: bytes) -> int:
@@ -69,6 +113,66 @@ def _decode_timestamp(raw: bytes) -> tuple[int, float, str]:
     return ticks, unix_seconds, decoded
 
 
+def _read_string(data: bytes, pos: int, max_length: int) -> tuple[str, int]:
+    length = struct.unpack_from("<I", data, pos)[0]
+    pos += 4
+    if not 1 <= length <= max_length or pos + length > len(data):
+        raise ValueError("bad string length")
+    raw = data[pos : pos + length]
+    if not raw.endswith(b"\0"):
+        raise ValueError("unterminated string")
+    return raw[:-1].decode("utf-8"), pos + length
+
+
+def _parse_records(
+    data: bytes, pos: int, row_count: int, with_pool: bool
+) -> tuple[list[dict[str, Any]], int]:
+    rows: list[dict[str, Any]] = []
+    for _ in range(row_count):
+        record_start = pos
+        reward_id, pos = _read_string(data, pos, MAX_REWARD_ID_LENGTH)
+        if pos + 13 > len(data):
+            raise ValueError("truncated record")
+        quantity = struct.unpack_from("<I", data, pos)[0]
+        pos += 4
+        record_flag = data[pos]
+        pos += 1
+        timestamp_raw = data[pos : pos + 8]
+        pos += 8
+        pool_id = ""
+        if with_pool:
+            pool_id, pos = _read_string(data, pos, MAX_MYSTERY_BOX_POOL_ID_LENGTH)
+            if pos + 4 > len(data):
+                raise ValueError("truncated record")
+            pos += 4
+        ticks, unix_seconds, timestamp_decoded = _decode_timestamp(timestamp_raw)
+        reward = REWARDS_BY_CASEFOLD.get(reward_id.casefold(), {})
+        canonical_reward_id = reward.get("id", reward_id)
+        rows.append(
+            {
+                "record_start": record_start,
+                "record_end": pos,
+                "record_len": pos - record_start,
+                "reward_type": reward.get("type") or infer_reward_type(reward_id),
+                "reward_id": canonical_reward_id,
+                "reward_name": reward.get("name", ""),
+                "reward_rank": reward.get("rank"),
+                "quantity": quantity,
+                "source_type": "mystery_box",
+                "result_type": "single_pull",
+                "timestamp_raw_hex": timestamp_raw.hex(),
+                "timestamp_ticks": ticks,
+                "timestamp_unix": unix_seconds,
+                "timestamp_decoded": timestamp_decoded,
+                "record_flag": record_flag,
+                "record_hex": data[record_start:pos].hex(),
+                "decoder_mode": "structured",
+                "structured_pool_id": pool_id,
+            }
+        )
+    return rows, pos
+
+
 def _parse_view(data: bytes) -> list[dict[str, Any]]:
     marker_pos = data.find(MYSTERY_BOX_MARKER)
     if marker_pos < 0:
@@ -78,55 +182,22 @@ def _parse_view(data: bytes) -> list[dict[str, Any]]:
         pos += 1
     if pos + 12 > len(data):
         return []
-    _reserved, _declared_size, row_count = struct.unpack_from("<III", data, pos)
+    _reserved, declared_size, row_count = struct.unpack_from("<III", data, pos)
     pos += 12
     if row_count > MAX_RECORDS_PER_BLOCK:
         return []
 
-    rows: list[dict[str, Any]] = []
+    # The pooled layout's declared size covers the row count field plus rows,
+    # which distinguishes it from the legacy layout.
     try:
-        for _ in range(row_count):
-            record_start = pos
-            reward_length = struct.unpack_from("<I", data, pos)[0]
-            pos += 4
-            if not 1 <= reward_length <= MAX_REWARD_ID_LENGTH or pos + reward_length + 13 > len(data):
-                return []
-            reward_raw = data[pos : pos + reward_length]
-            pos += reward_length
-            if not reward_raw.endswith(b"\0"):
-                return []
-            reward_id = reward_raw[:-1].decode("utf-8")
-            quantity = struct.unpack_from("<I", data, pos)[0]
-            pos += 4
-            record_flag = data[pos]
-            pos += 1
-            timestamp_raw = data[pos : pos + 8]
-            pos += 8
-            ticks, unix_seconds, timestamp_decoded = _decode_timestamp(timestamp_raw)
-            reward = REWARDS_BY_CASEFOLD.get(reward_id.casefold(), {})
-            canonical_reward_id = reward.get("id", reward_id)
-            rows.append(
-                {
-                    "record_start": record_start,
-                    "record_end": pos,
-                    "record_len": pos - record_start,
-                    "reward_type": reward.get("type") or infer_reward_type(reward_id),
-                    "reward_id": canonical_reward_id,
-                    "reward_name": reward.get("name", ""),
-                    "reward_rank": reward.get("rank"),
-                    "quantity": quantity,
-                    "source_type": "mystery_box",
-                    "result_type": "single_pull",
-                    "timestamp_raw_hex": timestamp_raw.hex(),
-                    "timestamp_ticks": ticks,
-                    "timestamp_unix": unix_seconds,
-                    "timestamp_decoded": timestamp_decoded,
-                    "record_flag": record_flag,
-                    "record_hex": data[record_start:pos].hex(),
-                    "decoder_mode": "structured",
-                }
-            )
-    except (OSError, OverflowError, UnicodeDecodeError, ValueError, struct.error):
+        rows, end = _parse_records(data, pos, row_count, with_pool=True)
+        if end - pos + 4 == declared_size:
+            return rows
+    except (OverflowError, UnicodeDecodeError, ValueError, struct.error):
+        pass
+    try:
+        rows, _end = _parse_records(data, pos, row_count, with_pool=False)
+    except (OverflowError, UnicodeDecodeError, ValueError, struct.error):
         return []
     return rows
 

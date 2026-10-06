@@ -22,10 +22,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from nte_history_exporter.decoder.boundary import annotate_groups
 from nte_history_exporter.export.csv_export import write_csv
 from nte_history_exporter.export.json_export import build_export_json
-from nte_history_exporter.live_capture.runner import export_paths
+from nte_history_exporter.live_capture.runner import collect_export_rows, export_paths
 from nte_history_exporter.live_capture.session import LiveHistorySession, UdpPacket
 
 
@@ -60,21 +59,20 @@ def main(argv: list[str] | None = None) -> int:
         print("No history pages were captured in this file.")
         return 1
 
-    for kind in kinds:
-        rows = session.build_rows(kind)
-        if kind not in {"arc_miracle_box", "mystery_box"}:
-            rows = annotate_groups(rows)
+    for kind in session.export_kinds():
+        rows, warnings, pages_seen, pools = collect_export_rows(session, kind)
         csv_path, json_path = export_paths(kind, session.user_uid)
         if args.debug:
             write_csv(csv_path, rows)
         export = build_export_json(
             rows,
-            [],
+            warnings,
             source="replay",
             capture_source=Path(args.capture_source).name,
             user_uid=session.user_uid,
             server_id=session.server_id,
-            pages_seen=[p[0] for p in session.best_run(kind)],
+            pages_seen=pages_seen,
+            pools=pools,
         )
         json_path.write_text(
             json.dumps(export, ensure_ascii=False, indent=2) + "\n",
