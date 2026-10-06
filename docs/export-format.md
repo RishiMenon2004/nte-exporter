@@ -62,6 +62,8 @@ For most tools, prefer these fields:
 - `user_uid`: Account UID, when present. Use this with `uid` if storing data for
   multiple accounts.
 - `pool_group_id`: Stable pool ID for the record.
+- `pool_id`: The banner rotation the pull came from, such as `Lottery_LingKe`,
+  `ForkLottery_LingKe` or `MangHe_bsj2`. `null` when it could not be decoded.
 - `banner.id`: Stable pool ID for the whole file. This should match
   `pool_group_id` on records.
 - `timestamp`: Display timestamp from the game history.
@@ -136,6 +138,7 @@ Monopoly:
 {
   "uid": "7aae34232160e950ecc7b5da38812caa",
   "pool_group_id": "Lottery_LimitedCharacter",
+  "pool_id": "Lottery_LingKe",
   "timestamp": "2026-06-10 13:32:17",
   "timestamp_group_ordinal": 0,
   "roll_result": 5,
@@ -154,6 +157,7 @@ Arc:
 {
   "uid": "75c42ad1171d1d0f72b2c8d8307f7230",
   "pool_group_id": "Arc_MiracleBox",
+  "pool_id": "ForkLottery_LingKe",
   "timestamp": "2026-06-10 23:46:29",
   "timestamp_group_ordinal": 0,
   "reward_type": "arc",
@@ -183,8 +187,8 @@ Mystery Box:
 }
 ```
 
-All Mystery Box pools are exported to one file. `pool_id` identifies each
-record's pool, and `scan.pools` lists the pages seen per pool.
+All Mystery Box pools are exported to one file, and `scan.pools` lists the
+pages seen per pool.
 
 ## Achievement export
 

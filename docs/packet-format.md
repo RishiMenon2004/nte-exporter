@@ -22,7 +22,8 @@ and asset-table ID casing can differ. Missing metadata never prevents export.
 Both history paths now recognize the structured `FMonopolyLotteryRecordData`
 and `FForkLotteryRecordData` blocks, including blocks packed at a non-byte
 alignment. Structured fields include the item/count pair, pool ID, secondary
-reward data, roll result, and standard .NET timestamp.
+reward data, roll result, and standard .NET timestamp. Monopoly rows end with
+the banner ID (e.g. `Lottery_LingKe`, `Lottery_Permanent`).
 
 The structured parser is deliberately compatibility-gated:
 
