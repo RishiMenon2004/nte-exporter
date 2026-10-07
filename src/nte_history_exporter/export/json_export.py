@@ -165,6 +165,7 @@ def _record_for_export(row: dict[str, Any]) -> dict[str, Any]:
         return {
             "uid": row.get("uid"),
             "pool_group_id": row.get("pool_group_id"),
+            "pool_id": row.get("structured_pool_id") or None,
             "timestamp": row.get("timestamp_decoded"),
             "timestamp_group_ordinal": row.get("timestamp_group_ordinal"),
             "reward_type": row.get("reward_type"),
@@ -193,6 +194,7 @@ def _record_for_export(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "uid": row.get("uid"),
         "pool_group_id": row.get("pool_group_id", BANNER_ID),
+        "pool_id": row.get("structured_pool_id") or None,
         "timestamp": row.get("timestamp_decoded"),
         "timestamp_group_ordinal": row.get("timestamp_group_ordinal"),
         "roll_result": row.get("dice"),

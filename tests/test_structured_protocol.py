@@ -48,6 +48,8 @@ def monopoly_payload(
     secondary_item_id: str = "",
     secondary_count: int = 0,
     pool_id: str = "CardPool_Character",
+    banner_id: str = "",
+    row_count: int = 1,
 ) -> bytes:
     row = (
         roll_points.to_bytes(4, "little")
@@ -58,14 +60,15 @@ def monopoly_payload(
         + fstring(item_spec.split(",", 1)[0])
         + fstring(pool_id)
         + ticks.to_bytes(8, "little")
+        + (fstring(banner_id) if banner_id else b"")
     )
     return (
         MONOPOLY_MARKER
         + b"\0"
         + (0).to_bytes(4, "little")
-        + len(row).to_bytes(4, "little")
-        + (1).to_bytes(4, "little")
-        + row
+        + (len(row) * row_count).to_bytes(4, "little")
+        + row_count.to_bytes(4, "little")
+        + row * row_count
     )
 
 
@@ -156,6 +159,15 @@ class StructuredProtocolTests(unittest.TestCase):
         self.assertEqual(rows[0]["secondary_reward_id"], "Dice_ticket_02")
         self.assertEqual(rows[0]["secondary_quantity"], 5)
         self.assertEqual(rows[0]["structured_pool_id"], "CardPool_Character")
+
+    def test_structured_monopoly_rows_read_trailing_banner_id(self):
+        payload = monopoly_payload("1003,1", banner_id="Lottery_LingKe", row_count=2)
+
+        records = parse_structured_records(payload, "monopoly")
+
+        self.assertEqual([record.pool_id for record in records], ["Lottery_LingKe"] * 2)
+        export = build_export_json(annotate_groups(decode_response_records(payload)), [])
+        self.assertEqual(export["records"][0]["pool_id"], "Lottery_LingKe")
 
     def test_structured_reward_mapping_is_case_insensitive_and_canonical(self):
         row = decode_response_records(monopoly_payload("DICENORMAL,1"))[0]

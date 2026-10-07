@@ -277,6 +277,12 @@ def _parse_monopoly_row(
         pool_id = result_or_pool if result_or_pool.startswith("CardPool_") else None
 
     ticks = reader.u64()
+    banner_pos = reader.pos
+    banner_id = reader.try_string()
+    if banner_id and banner_id.startswith("Lottery_"):
+        pool_id = banner_id
+    else:
+        reader.pos = banner_pos
     return _make_record(
         reader,
         "monopoly",
