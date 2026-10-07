@@ -103,20 +103,24 @@ class GuiReporterTests(unittest.TestCase):
     def test_working_dir_moves_only_when_needed(self):
         from nte_history_exporter.gui import app
 
-        with TemporaryDirectory() as tmp, patch.object(app.Path, "home", return_value=Path(tmp)):
+        with TemporaryDirectory() as tmp:
+            # Resolve symlinks: on macOS the temp dir is under /var -> /private/var,
+            # and Path.cwd() reports the resolved path.
+            home = Path(tmp).resolve()
             start = Path.cwd()
             try:
-                with patch.object(app.sys, "platform", "win32"), patch.object(app.os, "access", return_value=True):
-                    app._use_writable_working_dir()
-                    self.assertEqual(Path.cwd(), start)
+                with patch.object(app.Path, "home", return_value=home):
+                    with patch.object(app.sys, "platform", "win32"), patch.object(app.os, "access", return_value=True):
+                        app._use_writable_working_dir()
+                        self.assertEqual(Path.cwd(), start)
 
-                with patch.object(app.sys, "platform", "linux"), patch.object(app.os, "access", return_value=False):
-                    app._use_writable_working_dir()
-                    self.assertEqual(Path.cwd(), Path(tmp) / "NTE History Exporter")
+                    with patch.object(app.sys, "platform", "linux"), patch.object(app.os, "access", return_value=False):
+                        app._use_writable_working_dir()
+                        self.assertEqual(Path.cwd(), home / "NTE History Exporter")
 
-                with patch.object(app.sys, "platform", "darwin"), patch.object(app.sys, "frozen", True, create=True):
-                    app._use_writable_working_dir()
-                    self.assertEqual(Path.cwd(), Path(tmp) / "Documents" / "NTE History Exporter")
+                    with patch.object(app.sys, "platform", "darwin"), patch.object(app.sys, "frozen", True, create=True):
+                        app._use_writable_working_dir()
+                        self.assertEqual(Path.cwd(), home / "Documents" / "NTE History Exporter")
             finally:
                 os.chdir(start)
 
