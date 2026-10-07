@@ -47,12 +47,18 @@ Npcap is Windows-only and is not bundled with this project. Linux and macOS use 
 
 ## Downloads
 
-Compiled command-line builds are published on the [GitHub Releases page](https://github.com/Golumpa/nte-exporter/releases):
+Compiled builds are published on the [GitHub Releases page](https://github.com/RishiMenon2004/nte-exporter/releases).
 
-- `nte-history-exporter.exe` for Windows
-- `nte-history-exporter-linux` for Linux
-- `nte-history-exporter-macos` for macOS
-- Versioned `.zip` archives for each platform
+| Platform | Command line | Desktop GUI (preview) |
+| -------- | ------------ | --------------------- |
+| Windows | `nte-history-exporter.exe` | `nte-history-exporter-gui.exe` |
+| Linux | `nte-history-exporter-linux` | `nte-history-exporter-gui-linux` |
+| macOS | `nte-history-exporter-macos` | `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip` (contains `NTE History Exporter.app`) |
+
+Each platform also has a versioned `nte-history-exporter-v<version>-….zip`. The
+Windows and Linux zips contain both the command-line and GUI builds. See
+[docs/gui.md](docs/gui.md#downloaded-builds) for how to start the GUI on each
+platform.
 
 The Windows executable is a single console app. Start it from a terminal:
 
@@ -95,6 +101,20 @@ From source:
 ```
 
 Or simply double-click **`run-exporter.cmd`**.
+
+#### Desktop GUI (preview)
+
+The GUI is a Tkinter window around the same live capture. Pick the backend and
+options, click **Start capture**, and watch pages arrive for each banner. Then
+click **Stop & export**. Download it from Releases (see
+[Downloads](#downloads)), or run it from source: double-click
+**`run-exporter-gui.cmd`**, or run `python -m nte_history_exporter.gui` with
+`src` on `PYTHONPATH`. See [docs/gui.md](docs/gui.md) for per-platform setup and
+customization.
+
+<div align="center">
+  <img src="docs/images/gui-demo.png" width="560" alt="Desktop GUI during a capture" />
+</div>
 
 > [!IMPORTANT]
 > Start the exporter **before pressing Start on the game's main menu**. This is
@@ -263,11 +283,11 @@ For Monopoly, Points Gift and Chase Reward rows stay in the timestamp group for 
 - Live Windows raw-socket fallback
 - Sanitized UDP payload capture and offline replay (`tools/capture_payloads.py`, `tools/replay_payloads.py`)
 - `mitmproxy .flows` research decoder
+- Tkinter desktop GUI for Windows, Linux, and macOS (preview, see [docs/gui.md](docs/gui.md))
 
 **Planned**
 
 - Optional pktmon diagnostics for capture-drop investigation
-- UI wrapper around the CLI
 
 ## Example Run
 

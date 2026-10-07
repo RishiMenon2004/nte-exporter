@@ -6,8 +6,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-LATEST_RELEASE_API_URL = "https://api.github.com/repos/Golumpa/nte-exporter/releases/latest"
-RELEASES_URL = "https://github.com/Golumpa/nte-exporter/releases"
+LATEST_RELEASE_API_URL = "https://api.github.com/repos/RishiMenon2004/nte-exporter/releases/latest"
+RELEASES_URL = "https://github.com/RishiMenon2004/nte-exporter/releases"
 
 
 @dataclass(frozen=True)

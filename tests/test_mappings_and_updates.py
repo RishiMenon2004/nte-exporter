@@ -35,7 +35,7 @@ class MappingAndUpdateTests(unittest.TestCase):
     def test_update_check_reports_newer_github_release(self):
         latest = {
             "tag_name": "v0.1.7",
-            "html_url": "https://github.com/Golumpa/nte-exporter/releases/tag/v0.1.7",
+            "html_url": "https://github.com/RishiMenon2004/nte-exporter/releases/tag/v0.1.7",
         }
         with patch("nte_history_exporter.update_check.fetch_latest_release", return_value=latest):
             update = check_for_update("0.1.6", timeout=0.1)
@@ -45,14 +45,14 @@ class MappingAndUpdateTests(unittest.TestCase):
             UpdateInfo(
                 current_version="0.1.6",
                 latest_version="v0.1.7",
-                release_url="https://github.com/Golumpa/nte-exporter/releases/tag/v0.1.7",
+                release_url="https://github.com/RishiMenon2004/nte-exporter/releases/tag/v0.1.7",
             ),
         )
 
     def test_update_check_ignores_prerelease(self):
         latest = {
             "tag_name": "v0.1.8-dev-branch.123",
-            "html_url": "https://github.com/Golumpa/nte-exporter/releases/tag/v0.1.8-dev-branch.123",
+            "html_url": "https://github.com/RishiMenon2004/nte-exporter/releases/tag/v0.1.8-dev-branch.123",
             "prerelease": True,
         }
         with patch("nte_history_exporter.update_check.fetch_latest_release", return_value=latest):

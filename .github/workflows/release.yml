@@ -70,11 +70,24 @@ jobs:
       - name: Smoke Test
         run: .\dist\nte-history-exporter.exe --help
 
+      - name: Build GUI
+        run: python -m PyInstaller --clean --noconfirm "packaging/NTE History Exporter GUI.spec"
+
+      # The GUI exe is windowed (no console), so --smoke-test builds the window and
+      # reports success through the exit code instead of printing anything.
+      - name: Smoke Test GUI
+        timeout-minutes: 2
+        run: |
+          $p = Start-Process -FilePath .\dist\nte-history-exporter-gui.exe -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "GUI smoke test exited with code $($p.ExitCode)" }
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
           name: windows
-          path: dist/nte-history-exporter.exe
+          path: |
+            dist/nte-history-exporter.exe
+            dist/nte-history-exporter-gui.exe
 
   build-linux:
     name: Build Linux
@@ -85,8 +98,8 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v5
 
-      - name: Install libpcap
-        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      - name: Install libpcap and a virtual display
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev xvfb
 
       - name: Get Python
         uses: actions/setup-python@v6
@@ -107,11 +120,20 @@ jobs:
       - name: Smoke Test
         run: ./dist/nte-history-exporter --help
 
+      - name: Build GUI
+        run: python -m PyInstaller --clean --noconfirm "packaging/NTE History Exporter GUI.spec"
+
+      - name: Smoke Test GUI
+        timeout-minutes: 2
+        run: xvfb-run -a ./dist/nte-history-exporter-gui --smoke-test
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
           name: linux
-          path: dist/nte-history-exporter
+          path: |
+            dist/nte-history-exporter
+            dist/nte-history-exporter-gui
 
   build-macos:
     name: Build Macos
@@ -141,11 +163,25 @@ jobs:
       - name: Smoke Test
         run: ./dist/nte-history-exporter --help
 
+      - name: Build GUI
+        run: python -m PyInstaller --clean --noconfirm "packaging/NTE History Exporter GUI.spec"
+
+      - name: Smoke Test GUI
+        timeout-minutes: 2
+        run: '"dist/NTE History Exporter.app/Contents/MacOS/nte-history-exporter-gui" --smoke-test'
+
+      # Zip the .app here with ditto: artifact upload drops the executable bits and
+      # symlinks a bundle needs, so it must travel already archived.
+      - name: Archive GUI App
+        run: ditto -c -k --keepParent "dist/NTE History Exporter.app" dist/nte-history-exporter-gui-macos.zip
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
           name: macos
-          path: dist/nte-history-exporter
+          path: |
+            dist/nte-history-exporter
+            dist/nte-history-exporter-gui-macos.zip
 
   release:
     name: Release
@@ -208,15 +244,20 @@ jobs:
         run: |
           version="${{ steps.package-version.outputs.version }}"
           cp windows/nte-history-exporter.exe nte-history-exporter.exe
-          zip nte-history-exporter-v${version}-x86_64-pc-windows-msvc.zip nte-history-exporter.exe
+          cp windows/nte-history-exporter-gui.exe nte-history-exporter-gui.exe
+          zip nte-history-exporter-v${version}-x86_64-pc-windows-msvc.zip nte-history-exporter.exe nte-history-exporter-gui.exe
           cp linux/nte-history-exporter nte-history-exporter
-          chmod +x nte-history-exporter
+          cp linux/nte-history-exporter-gui nte-history-exporter-gui
+          chmod +x nte-history-exporter nte-history-exporter-gui
           cp nte-history-exporter nte-history-exporter-linux
-          zip nte-history-exporter-v${version}-x86_64-unknown-linux-gnu.zip nte-history-exporter
+          cp nte-history-exporter-gui nte-history-exporter-gui-linux
+          zip nte-history-exporter-v${version}-x86_64-unknown-linux-gnu.zip nte-history-exporter nte-history-exporter-gui
           cp macos/nte-history-exporter nte-history-exporter
           chmod +x nte-history-exporter
           cp nte-history-exporter nte-history-exporter-macos
           zip nte-history-exporter-v${version}-x86_64-apple-darwin.zip nte-history-exporter
+          # Already zipped with ditto on the macOS runner; just give it a versioned name.
+          cp macos/nte-history-exporter-gui-macos.zip nte-history-exporter-gui-v${version}-x86_64-apple-darwin.zip
 
       - name: Release
         env:
@@ -234,9 +275,12 @@ jobs:
             nte-history-exporter.exe
             nte-history-exporter-linux
             nte-history-exporter-macos
+            nte-history-exporter-gui.exe
+            nte-history-exporter-gui-linux
             nte-history-exporter-v${version}-x86_64-pc-windows-msvc.zip
             nte-history-exporter-v${version}-x86_64-unknown-linux-gnu.zip
             nte-history-exporter-v${version}-x86_64-apple-darwin.zip
+            nte-history-exporter-gui-v${version}-x86_64-apple-darwin.zip
           )
 
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then

@@ -33,3 +33,24 @@ if errorlevel 1 (
     echo Built executable smoke test failed.
     exit /b %errorlevel%
 )
+
+"%PYTHON%" -m PyInstaller --clean --noconfirm "packaging\NTE History Exporter GUI.spec"
+if errorlevel 1 (
+    echo PyInstaller failed for the GUI.
+    exit /b %errorlevel%
+)
+
+set "GUI_EXE=%CD%\dist\nte-history-exporter-gui.exe"
+if not exist "%GUI_EXE%" (
+    echo Expected build output was not created: %GUI_EXE%
+    exit /b 1
+)
+
+echo Built %GUI_EXE%
+rem The GUI is windowed, so start /wait is needed to get its exit code.
+start "" /wait "%GUI_EXE%" --smoke-test
+if errorlevel 1 (
+    echo Built GUI smoke test failed.
+    exit /b %errorlevel%
+)
+echo GUI smoke test passed.
