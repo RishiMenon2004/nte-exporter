@@ -65,6 +65,8 @@ TEXT = {
     "gap_hint": "Close and reopen this history board, then scroll down until the gap is recovered.",
     "copied": "Export copied to clipboard - paste it straight into your tracker.",
     "copy_failed": "Could not reach the clipboard. The export is still in the exports folder.",
+    "drop_sent": "Sent to {site}. Finish the import in your browser.",
+    "drop_failed": "Could not send to {site} ({reason}). Opening the site and exports folder instead.",
     "copy_skipped": "Multiple banners captured; clipboard copy skipped so one export does not overwrite another.",
     "achievements_row": "Achievements",
     # Status bar

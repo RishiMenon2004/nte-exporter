@@ -51,7 +51,7 @@ function buildTrackers(trackers) {
   for (const { key, label } of trackers) {
     const button = el("button", "link-pill", `${label} ↗`);
     button.type = "button";
-    button.addEventListener("click", () => api.open_tracker(key));
+    button.addEventListener("click", () => openTracker(key, button));
     group.append(button);
   }
 }
@@ -165,6 +165,68 @@ async function copyToClipboard(text) {
     const copied = document.execCommand("copy");
     area.remove();
     return copied;
+  }
+}
+
+// Import drops --------------------------------------------------------------
+
+// Protocol v1: the exports are gzipped, encrypted with AES-256-GCM and POSTed as
+// { version: 1, ciphertext, iv }; the site answers { dropId }. The key stays on this machine
+// until it is put after the # of the link, which browsers never send to a server.
+
+const DROP_TIMEOUT_MS = 20000;
+
+function toBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function toBase64Url(buffer) {
+  return toBase64(buffer).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function encryptDrop(plaintext) {
+  const gzip = new Blob([plaintext]).stream().pipeThrough(new CompressionStream("gzip"));
+  const compressed = await new Response(gzip).arrayBuffer();
+  const key = crypto.getRandomValues(new Uint8Array(32));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cryptoKey = await crypto.subtle.importKey("raw", key, "AES-GCM", false, ["encrypt"]);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, compressed);
+  return { key: toBase64Url(key), ciphertext: toBase64(ciphertext), iv: toBase64(iv) };
+}
+
+async function uploadDrop({ upload_url, plaintext }) {
+  const { key, ciphertext, iv } = await encryptDrop(plaintext);
+  const response = await fetch(upload_url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version: 1, ciphertext, iv }),
+    signal: AbortSignal.timeout(DROP_TIMEOUT_MS),
+  });
+  if (response.status !== 201) throw new Error(`HTTP ${response.status}`);
+  const { dropId } = await response.json();
+  return `${dropId}.${key}`;
+}
+
+async function openTracker(key, button) {
+  button.disabled = true;
+  try {
+    const drop = await api.import_drop(key);
+    let fragment = null;
+    if (drop) {
+      try {
+        fragment = await uploadDrop(drop);
+      } catch (error) {
+        await api.report_drop_failed(key, error.message);
+      }
+    }
+    await api.open_tracker(key, fragment);
+  } finally {
+    button.disabled = false;
   }
 }
 

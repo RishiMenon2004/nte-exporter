@@ -207,6 +207,14 @@ Explorer which folders are open and skips this if the folder is already there.
 Other platforms have no such check, so they always ask the file manager to open
 it.
 
+An entry with a `drop` setting can take the latest capture directly instead. The
+page encrypts the exports and uploads them, then the site opens on a one-time link,
+with no folder needed. Mystery Box exports aren't sent, because the site doesn't
+track them. With no capture yet, or if the upload fails, the button
+falls back to the site and folder as above. Chiz.Pink is the only site that does
+this, and `web/app.js` holds the protocol. Set
+`NTE_CHIZ_PINK_URL=http://localhost:3000` to point it at a local dev server.
+
 ### Updates
 
 When GitHub has a newer release, a pill appears in the title bar. In a packaged

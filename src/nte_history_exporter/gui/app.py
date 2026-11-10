@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import queue
 import subprocess
@@ -33,6 +34,18 @@ LIST_OPEN_FOLDERS_SCRIPT = (
 )
 
 TEXT = theme.TEXT
+
+
+def drop_plaintext(payloads: list[str], skip_banners: tuple[str, ...] = ()) -> str | None:
+    """Group a capture's exports into the document a tracker import drop carries.
+
+    Returns None if the site takes none of them.
+    """
+    exports = [json.loads(payload) for payload in payloads]
+    exports = [export for export in exports if export["banner"]["id"] not in skip_banners]
+    if not exports:
+        return None
+    return json.dumps({"version": 1, "exports": exports}, ensure_ascii=False, separators=(",", ":"))
 
 
 def format_pages(pages: set[int]) -> str:
@@ -70,6 +83,7 @@ class Bridge:
         self._copy_after_capture = False
         self._close_when_done = False
         self._closing_confirmed = False
+        self._payloads: list[str] = []  # Exports from the latest capture.
         self._rows: dict[str, dict] = {}
         self._pages: dict[str, set[int]] = {}
         self._prompts: dict[int, PromptReply] = {}
@@ -115,6 +129,7 @@ class Bridge:
                 return
             self._rows.clear()
             self._pages.clear()
+            self._payloads = []
             self._emit("reset")
             backend = settings.get("backend")
             options = {
@@ -168,10 +183,38 @@ class Bridge:
                 self._emit("update", text=TEXT["update_downloading"].format(percent=0), busy=True)
                 threading.Thread(target=self._run_update, args=(asset,), daemon=True).start()
 
-    def open_tracker(self, key: str) -> None:
-        """Open a tracker site with the exports folder alongside it, ready to drag from."""
+    def import_drop(self, key: str) -> dict | None:
+        """What the page should encrypt and upload for this tracker, if anything."""
+        drop = trackers.SITES.get(key, {}).get("drop")
+        with self._lock:
+            payloads = list(self._payloads)
+        if not drop or not payloads:
+            return None
+        plaintext = drop_plaintext(payloads, drop.get("skip_banners", ()))
+        if plaintext is None:
+            return None
+        return {"upload_url": drop["upload_url"], "plaintext": plaintext}
+
+    def report_drop_failed(self, key: str, reason: str) -> None:
+        site = trackers.SITES.get(key)
+        if site:
+            with self._lock:
+                self._append((TEXT["drop_failed"].format(site=site["label"], reason=reason), "warning"))
+
+    def open_tracker(self, key: str, fragment: str | None = None) -> None:
+        """Open a tracker site: on an uploaded drop if there is one, or else
+        with the exports folder alongside it, ready to drag from.
+
+        ``fragment`` is the drop's "<dropId>.<key>". It goes after the # so that
+        the decryption key is never sent to a server.
+        """
         site = trackers.SITES.get(key)
         if not site:
+            return
+        if fragment and "drop" in site:
+            webbrowser.open(f"{site['drop']['open_url']}#{fragment}")
+            with self._lock:
+                self._append((TEXT["drop_sent"].format(site=site["label"]), "success"))
             return
         folder_needed = not exports_folder_is_open()
         webbrowser.open(site["url"])
@@ -335,6 +378,7 @@ class Bridge:
     def _on_finished(self, result: dict) -> None:
         self._emit("state", state="idle")
         exports = result["exports"]
+        self._payloads = [export["payload"] for export in exports]
         if self._copy_after_capture and len(exports) == 1:
             # Written by the page; report_copy() logs how that went.
             self._emit("copy", text=exports[0]["payload"])

@@ -1,3 +1,4 @@
+import json
 import os
 import queue
 import re
@@ -238,6 +239,58 @@ class BridgeTests(unittest.TestCase):
         ):
             self.bridge.open_tracker("chiz_pink")
         browser.assert_called_once()
+
+    def test_tracker_opens_an_uploaded_drop_without_the_folder(self):
+        with (
+            patch("nte_history_exporter.gui.app.webbrowser.open") as browser,
+            patch("nte_history_exporter.gui.app.exports_folder_is_open") as folder_check,
+        ):
+            self.bridge.open_tracker("chiz_pink", "drop-id.secret-key")
+
+        open_url = trackers.SITES["chiz_pink"]["drop"]["open_url"]
+        browser.assert_called_once_with(f"{open_url}#drop-id.secret-key")
+        folder_check.assert_not_called()
+        logged = [op for op in self.bridge.poll() if op["op"] == "log"]
+        self.assertEqual(logged[0]["segments"][0][1], "success")
+
+    def test_failed_drop_reports_why(self):
+        self.bridge.report_drop_failed("chiz_pink", "HTTP 413")
+        logged = [op for op in self.bridge.poll() if op["op"] == "log"]
+        self.assertIn("HTTP 413", logged[0]["segments"][0][0])
+
+    def test_import_drop_holds_every_export_from_the_latest_capture(self):
+        self.assertIsNone(self.bridge.import_drop("chiz_pink"))
+
+        exports = [{"payload": '{\n  "banner": {"id": "a"}\n}'}, {"payload": '{"banner": {"id": "é"}}'}]
+        self.ops(("finished", {"exports": exports, "achievement_path": None}))
+        drop = self.bridge.import_drop("chiz_pink")
+
+        self.assertEqual(drop["upload_url"], trackers.SITES["chiz_pink"]["drop"]["upload_url"])
+        self.assertEqual(drop["plaintext"], '{"version":1,"exports":[{"banner":{"id":"a"}},{"banner":{"id":"é"}}]}')
+
+    def test_mystery_box_exports_are_not_sent_to_chiz_pink(self):
+        limited = {"payload": '{"banner": {"id": "Lottery_LimitedCharacter"}}'}
+        mystery = {"payload": '{"banner": {"id": "Gashapon_MysteryBox"}}'}
+
+        self.ops(("finished", {"exports": [mystery, limited], "achievement_path": None}))
+        exports = json.loads(self.bridge.import_drop("chiz_pink")["plaintext"])["exports"]
+        self.assertEqual([export["banner"]["id"] for export in exports], ["Lottery_LimitedCharacter"])
+
+        self.ops(("finished", {"exports": [mystery], "achievement_path": None}))
+        self.assertIsNone(self.bridge.import_drop("chiz_pink"))
+
+    def test_import_drop_is_only_for_sites_that_support_it(self):
+        exports = [{"payload": '{"banner": {"id": "a"}}'}]
+        self.ops(("finished", {"exports": exports, "achievement_path": None}))
+        self.assertIsNone(self.bridge.import_drop("ntewiz"))
+        self.assertIsNone(self.bridge.import_drop("https://example.invalid/"))
+
+    def test_new_capture_clears_the_exports_to_send(self):
+        self.ops(("finished", {"exports": [{"payload": "{}"}], "achievement_path": None}))
+        with patch("nte_history_exporter.gui.app.run_live_capture", return_value={"exports": [], "achievement_path": None}):
+            self.bridge.start_capture({})
+            self.assertIsNone(self.bridge.import_drop("chiz_pink"))
+            self.bridge._worker.join(5)
 
     def test_exports_folder_match_ignores_case_and_trailing_slash(self):
         from nte_history_exporter.gui import app

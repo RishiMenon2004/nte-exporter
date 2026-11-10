@@ -246,6 +246,10 @@ button {
 .link-pill:hover:not(:disabled) {
   background: var(--pink);
 }
+.link-pill:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
 
 .well {
   flex: 1;
