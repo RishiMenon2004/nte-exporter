@@ -1,10 +1,12 @@
 import os
 import queue
+import re
 import threading
 
 from tests.support import *  # noqa: F401,F403
-from nte_history_exporter.gui.app import format_pages
-from nte_history_exporter.gui.reporter import GuiReporter
+from nte_history_exporter.gui import theme, trackers
+from nte_history_exporter.gui.app import Bridge, format_pages
+from nte_history_exporter.gui.reporter import GuiReporter, PromptReply
 from nte_history_exporter.live_capture.runner import run_live_capture
 
 
@@ -86,19 +88,14 @@ class GuiReporterTests(unittest.TestCase):
 
         self.assertEqual(answers, ["23003"])
 
-    def test_palette_choice_round_trips_and_falls_back(self):
+    def test_page_only_uses_defined_text_keys(self):
         from nte_history_exporter.gui import app, theme
 
-        with TemporaryDirectory() as tmp:
-            prefs = Path(tmp) / "nested" / "gui.json"
-            with patch.object(app, "PREFS_PATH", prefs):
-                self.assertEqual(app.load_palette(), theme.PALETTE)
-                app.save_palette("light")
-                self.assertEqual(app.load_palette(), "light")
-                prefs.write_text('{"palette": "no-such-palette"}', encoding="utf-8")
-                self.assertEqual(app.load_palette(), theme.PALETTE)
-                prefs.write_text("not json", encoding="utf-8")
-                self.assertEqual(app.load_palette(), theme.PALETTE)
+        page = (app.WEB_DIR / "index.html").read_text(encoding="utf-8")
+        script = (app.WEB_DIR / "app.js").read_text(encoding="utf-8")
+        keys = set(re.findall(r'data-text="(\w+)"', page)) | set(re.findall(r"TEXT\.(\w+)", script))
+        self.assertTrue(keys)
+        self.assertEqual(keys - set(theme.TEXT), set())
 
     def test_working_dir_moves_only_when_needed(self):
         from nte_history_exporter.gui import app
@@ -128,6 +125,137 @@ class GuiReporterTests(unittest.TestCase):
         self.assertEqual(format_pages({1, 2, 3, 5, 7, 8}), "1-3, 5, 7-8")
         self.assertEqual(format_pages({4}), "4")
         self.assertEqual(format_pages(set()), "")
+
+
+class BridgeTests(unittest.TestCase):
+    def setUp(self):
+        self.bridge = Bridge()
+
+    def ops(self, *names):
+        for event in names:
+            self.bridge.events.put(event)
+        return self.bridge.poll()
+
+    def test_rows_collect_pages_and_keep_a_gap_warning(self):
+        self.ops(("page", "Arc Miracle Box", 1, False), ("page", "Arc Miracle Box", 2, False))
+        self.ops(("missing", "Arc Miracle Box", [3]))
+        rows = [op for op in self.ops(("page", "Arc Miracle Box", 4, False)) if op["op"] == "row"]
+
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "op": "row",
+                    "label": "Arc Miracle Box",
+                    "pages": "1-2, 4",
+                    "status": "Missing page(s) 3",
+                    "tag": "warning",
+                }
+            ],
+        )
+
+        recovered = [op for op in self.ops(("recovered", "Arc Miracle Box")) if op["op"] == "row"]
+        self.assertEqual((recovered[0]["status"], recovered[0]["tag"]), ("Gap recovered", "success"))
+
+    def test_prompt_answer_reaches_the_waiting_reply(self):
+        reply = PromptReply()
+        dialog = self.ops(("prompt", "server_id", reply))[0]
+
+        self.assertEqual((dialog["op"], dialog["kind"]), ("dialog", "prompt"))
+        self.assertTrue(dialog["choices"])
+        self.bridge.answer_prompt(dialog["id"], " 23003 ")
+        self.assertEqual(reply.wait(), "23003")
+
+        skipped = PromptReply()
+        dialog = self.ops(("prompt", "user_uid", skipped))[0]
+        self.assertIsNone(dialog["choices"])
+        self.bridge.answer_prompt(dialog["id"], None)
+        self.assertIsNone(skipped.wait())
+
+    def test_clipboard_copy_only_for_a_single_export(self):
+        self.bridge._copy_after_capture = True
+        finished = lambda count: ("finished", {"exports": [{"payload": "{}"}] * count, "achievement_path": None})
+
+        self.assertIn({"op": "copy", "text": "{}"}, self.ops(finished(1)))
+        self.assertFalse([op for op in self.ops(finished(2)) if op["op"] == "copy"])
+
+    def test_closing_during_capture_asks_first(self):
+        release = threading.Event()
+        self.bridge._worker = threading.Thread(target=release.wait, daemon=True)
+        self.bridge._worker.start()
+        self.addCleanup(release.set)
+
+        self.assertFalse(self.bridge._on_window_closing())
+        dialogs = [op for op in self.bridge.poll() if op["op"] == "dialog"]
+        self.assertEqual([dialog["kind"] for dialog in dialogs], ["close"])
+
+        self.bridge.resolve_close("save")
+        self.assertTrue(self.bridge._stop_event.is_set())
+        self.assertFalse(self.bridge._on_window_closing())
+        self.assertFalse([op for op in self.bridge.poll() if op["op"] == "dialog"])
+
+    def test_closing_while_idle_is_allowed(self):
+        self.assertTrue(self.bridge._on_window_closing())
+
+    def test_tracker_buttons_open_only_configured_sites(self):
+        keys = [site["key"] for site in self.bridge.bootstrap()["trackers"]]
+        self.assertEqual(keys, list(trackers.SITES))
+
+        with (
+            patch("nte_history_exporter.gui.app.webbrowser.open") as opened,
+            patch("nte_history_exporter.gui.app.exports_folder_is_open", return_value=True),
+        ):
+            self.bridge.open_tracker("chiz_pink")
+            self.bridge.open_tracker("https://example.invalid/")
+
+        opened.assert_called_once_with(trackers.SITES["chiz_pink"]["url"])
+
+    def test_tracker_button_opens_the_exports_folder_only_if_needed(self):
+        order = []
+        with (
+            patch("nte_history_exporter.gui.app.webbrowser.open", side_effect=lambda url: order.append("browser")),
+            patch("nte_history_exporter.gui.app.exports_folder_is_open", return_value=False),
+            patch("nte_history_exporter.gui.app.time.sleep"),
+            patch.object(self.bridge, "open_exports", side_effect=lambda: order.append("folder")),
+        ):
+            self.bridge.open_tracker("chiz_pink")
+        self.assertEqual(order, ["browser", "folder"])
+
+        with (
+            patch("nte_history_exporter.gui.app.webbrowser.open"),
+            patch("nte_history_exporter.gui.app.exports_folder_is_open", return_value=True),
+            patch.object(self.bridge, "open_exports") as folder,
+        ):
+            self.bridge.open_tracker("chiz_pink")
+        folder.assert_not_called()
+
+    def test_tracker_still_opens_if_the_folder_cannot(self):
+        with (
+            patch("nte_history_exporter.gui.app.webbrowser.open") as browser,
+            patch("nte_history_exporter.gui.app.exports_folder_is_open", return_value=False),
+            patch("nte_history_exporter.gui.app.time.sleep"),
+            patch.object(self.bridge, "open_exports", side_effect=OSError("no file manager")),
+        ):
+            self.bridge.open_tracker("chiz_pink")
+        browser.assert_called_once()
+
+    def test_exports_folder_match_ignores_case_and_trailing_slash(self):
+        from nte_history_exporter.gui import app
+
+        with TemporaryDirectory() as tmp:
+            exports = Path(tmp).resolve() / "exports"
+            with patch.object(app, "EXPORT_DIR", exports):
+                with patch.object(app, "open_explorer_folders", return_value=[str(exports).upper() + os.sep]):
+                    self.assertEqual(app.exports_folder_is_open(), os.name == "nt")
+                with patch.object(app, "open_explorer_folders", return_value=[str(exports) + "-old"]):
+                    self.assertFalse(app.exports_folder_is_open())
+
+    def test_failed_capture_shows_the_message(self):
+        ops = self.ops(("failed", "Npcap not found.", "hint"))
+
+        self.assertEqual(ops[0], {"op": "state", "state": "idle"})
+        self.assertIn({"op": "status", "text": theme.TEXT["status_failed"]}, ops)
+        self.assertEqual(ops[-1]["message"], "Npcap not found.")
 
 
 if __name__ == "__main__":

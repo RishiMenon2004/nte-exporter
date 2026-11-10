@@ -104,12 +104,12 @@ Or simply double-click **`run-exporter.cmd`**.
 
 #### Desktop GUI (preview)
 
-The GUI is a Tkinter window around the same live capture. Pick the backend and
+The GUI is a pywebview window around the same live capture. Pick the backend and
 options, click **Start capture**, and watch pages arrive for each banner. Then
 click **Stop & export**. Download it from Releases (see
 [Downloads](#downloads)), or run it from source: double-click
 **`run-exporter-gui.cmd`**, or run `python -m nte_history_exporter.gui` with
-`src` on `PYTHONPATH`. See [docs/gui.md](docs/gui.md) for per-platform setup and
+`src` on `PYTHONPATH`. From source it needs `pip install -e ".[gui]"` first. See [docs/gui.md](docs/gui.md) for per-platform setup and
 customization.
 
 <div align="center">
@@ -283,7 +283,7 @@ For Monopoly, Points Gift and Chase Reward rows stay in the timestamp group for 
 - Live Windows raw-socket fallback
 - Sanitized UDP payload capture and offline replay (`tools/capture_payloads.py`, `tools/replay_payloads.py`)
 - `mitmproxy .flows` research decoder
-- Tkinter desktop GUI for Windows, Linux, and macOS (preview, see [docs/gui.md](docs/gui.md))
+- pywebview desktop GUI for Windows, Linux, and macOS (preview, see [docs/gui.md](docs/gui.md))
 
 **Planned**
 

@@ -12,7 +12,7 @@ if not exist "%PYTHON%" (
 "%PYTHON%" -m pip install --upgrade pip
 if errorlevel 1 exit /b %errorlevel%
 
-"%PYTHON%" -m pip install -e ".[build]"
+"%PYTHON%" -m pip install -e ".[build,gui]"
 if errorlevel 1 exit /b %errorlevel%
 
 "%PYTHON%" -m PyInstaller --clean --noconfirm "packaging\NTE History Exporter.spec"

@@ -1,32 +1,36 @@
 from __future__ import annotations
 
-import json
 import os
 import queue
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import webbrowser
-import tkinter as tk
 from pathlib import Path
-from tkinter import font as tkfont
-from tkinter import messagebox, ttk
-from typing import Callable
 
-from nte_history_exporter.constants import EXPORTER_VERSION, GAME_NAME
+from nte_history_exporter.constants import EXPORTER_VERSION
 from nte_history_exporter.decoder.server_region import SERVER_REGIONS
-from nte_history_exporter.gui import theme
+from nte_history_exporter.gui import self_update, theme, trackers
 from nte_history_exporter.gui.reporter import GuiReporter, PromptReply
 from nte_history_exporter.live_capture.libpcap import LibpcapUnavailable
 from nte_history_exporter.live_capture.runner import run_live_capture
-from nte_history_exporter.update_check import check_for_update
+from nte_history_exporter.update_check import ReleaseAsset, UpdateInfo, check_for_update
 
 EXPORT_DIR = Path("exports")
-# Per-user GUI preferences (currently just the chosen palette).
-PREFS_PATH = Path(os.environ.get("APPDATA") or Path.home() / ".config") / "nte-history-exporter" / "gui.json"
+WEB_DIR = Path(__file__).resolve().parent / "web"
 BACKENDS = ("auto", "libpcap", "raw")
-POLL_MS = 50
+SMOKE_TIMEOUT_SECONDS = 60
+# webbrowser.open returns before the browser has come forward, so the exports
+# folder waits this long; opened any sooner it would end up behind the browser.
+BROWSER_SETTLE_SECONDS = 0.6
+# Lists the folder behind every open Explorer window and tab, one per line.
+LIST_OPEN_FOLDERS_SCRIPT = (
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8;"
+    "(New-Object -ComObject Shell.Application).Windows() | ForEach-Object {"
+    " try { $_.Document.Folder.Self.Path } catch {} }"
+)
 
 TEXT = theme.TEXT
 
@@ -46,432 +50,151 @@ def format_pages(pages: set[int]) -> str:
     return ", ".join(ranges)
 
 
-class ExporterApp:
-    def __init__(self, root: tk.Tk) -> None:
-        self.root = root
-        self.palette = load_palette()
-        self.colors = theme.PALETTES[self.palette]
-        # Tk scales fonts to the display DPI but not pixel sizes, so every size
-        # from theme.py goes through px() to keep proportions on scaled displays.
-        # macOS reports 72 DPI, which would shrink everything; never scale below 1.
-        self.scale = max(1.0, root.winfo_fpixels("1i") / 96)
+class Bridge:
+    """The page's view of the app, exposed to JavaScript as ``pywebview.api``.
+
+    Capture runs on a worker thread and reports through ``self.events``. The
+    page calls ``poll()`` on a timer, which turns those events into render
+    operations (plain dicts handled by the ``ops`` table in web/app.js), so all
+    capture logic stays here. Pywebview runs each JavaScript call on its own
+    thread, hence the lock. Names starting with ``_`` are hidden from the page.
+    """
+
+    def __init__(self) -> None:
         self.events: queue.Queue = queue.Queue()
-        self.stop_event = threading.Event()
-        self.worker: threading.Thread | None = None
-        self.copy_after_capture = False
-        self.close_when_done = False
-        self.rows: dict[str, str] = {}
-        self.pages: dict[str, set[int]] = {}
+        self._window = None
+        self._lock = threading.RLock()
+        self._ops: list[dict] = []
+        self._stop_event = threading.Event()
+        self._worker: threading.Thread | None = None
+        self._copy_after_capture = False
+        self._close_when_done = False
+        self._closing_confirmed = False
+        self._rows: dict[str, dict] = {}
+        self._pages: dict[str, set[int]] = {}
+        self._prompts: dict[int, PromptReply] = {}
+        self._next_prompt = 0
+        self._update: UpdateInfo | None = None
+        self._updating = False
+        self._update_percent = -1
+        self._ready = threading.Event()
 
-        self.backend = tk.StringVar(value="auto")
-        self.interface_ip = tk.StringVar()
-        self.user_uid = tk.StringVar()
-        self.copy_clipboard = tk.BooleanVar(value=True)
-        self.debug = tk.BooleanVar(value=False)
-        self.status = tk.StringVar(value=TEXT["status_idle"])
+    def _attach(self, window) -> None:
+        self._window = window
 
-        self._configure_window()
-        self._build_layout()
-        self._apply_palette()
-        self._show_instructions()
+    # ------------------------------------------------------- called by the page
 
-        root.protocol("WM_DELETE_WINDOW", self._on_close)
-        root.after(POLL_MS, self._drain_events)
+    def bootstrap(self) -> dict:
+        return {
+            "text": TEXT,
+            "version": EXPORTER_VERSION,
+            "backends": BACKENDS,
+            "trackers": [{"key": key, "label": site["label"]} for key, site in trackers.SITES.items()],
+        }
+
+    def ready(self) -> None:
+        """The page has rendered; start the window-dependent work."""
+        self._ready.set()
+        use_dark_title_bar(self._window)
         threading.Thread(target=self._check_for_update, daemon=True).start()
 
-    # ------------------------------------------------------------------ setup
+    def poll(self) -> list[dict]:
+        with self._lock:
+            try:
+                while True:
+                    name, *args = self.events.get_nowait()
+                    getattr(self, f"_on_{name}")(*args)
+            except queue.Empty:
+                pass
+            ops, self._ops = self._ops, []
+            return ops
 
-    def px(self, value: float) -> int:
-        return round(value * self.scale)
+    def start_capture(self, settings: dict) -> None:
+        with self._lock:
+            if self._capture_running() or self._updating:
+                return
+            self._rows.clear()
+            self._pages.clear()
+            self._emit("reset")
+            backend = settings.get("backend")
+            options = {
+                "interface_ip": (settings.get("interface_ip") or "").strip() or None,
+                "capture_backend": backend if backend in BACKENDS else "auto",
+                "write_debug_csv": bool(settings.get("debug")),
+                "user_uid": (settings.get("user_uid") or "").strip() or None,
+            }
+            self._copy_after_capture = bool(settings.get("copy_clipboard"))
+            self._stop_event.clear()
+            self._worker = threading.Thread(target=self._run_capture, args=(options,), daemon=True)
+            self._worker.start()
+            self._emit("state", state="running")
 
-    def _configure_window(self) -> None:
-        self.root.title(TEXT["window_title"])
-        width, height = theme.WINDOW["size"]
-        self.root.geometry(f"{self.px(width)}x{self.px(height)}")
-        self.root.minsize(*(self.px(size) for size in theme.WINDOW["min_size"]))
+    def stop_capture(self) -> None:
+        with self._lock:
+            self._request_stop()
 
-    @property
-    def dark(self) -> bool:
-        return self.palette == theme.DARK_PALETTE
+    def answer_prompt(self, prompt_id: int, value: str | None) -> None:
+        with self._lock:
+            reply = self._prompts.pop(prompt_id, None)
+        if reply is not None:
+            reply.answer((value or "").strip() or None)
 
-    def _apply_palette(self) -> None:
-        """Color every widget from self.colors; runs at startup and on each theme toggle."""
-        c = self.colors
-        self.root.configure(bg=c["bg"])
-        self._configure_styles()
-        # Plain Tk widgets ignore ttk styles, so they are recolored directly.
-        self.log.configure(
-            background=c["field"], foreground=c["text"], insertbackground=c["text"], selectbackground=c["select"]
-        )
-        for tag, color_key in theme.LOG_COLORS.items():
-            self.log.tag_configure(tag, foreground=c[color_key])
-        for tag in ("success", "warning", "error"):
-            self.tree.tag_configure(tag, foreground=c[tag])
-        # The combobox dropdown is a Tk listbox inside a hidden popdown window.
-        popdown = self.root.tk.call("ttk::combobox::PopdownWindow", self.backend_box)
-        self.root.tk.call(
-            f"{popdown}.f.l",
-            "configure",
-            "-background", c["field"],
-            "-foreground", c["text"],
-            "-selectbackground", c["select"],
-            "-selectforeground", c["text"],
-            "-font", theme.FONTS["body"],
-        )
-        family, glyph = self._theme_icon("to_light" if self.dark else "to_dark")
-        ttk.Style(self.root).configure("Toggle.TButton", font=(family, theme.THEME_ICON_SIZE))
-        self.theme_button.configure(text=glyph)
-        set_title_bar_theme(self.root, self.dark)
+    def report_copy(self, copied: bool) -> None:
+        with self._lock:
+            self._append((TEXT["copied"] if copied else TEXT["copy_failed"], "success" if copied else "warning"))
 
-    def _theme_icon(self, name: str) -> tuple[str, str]:
-        """The first (font, glyph) in theme.THEME_ICONS[name] whose font is installed."""
-        installed = set(tkfont.families(self.root))
-        for family, glyph in theme.THEME_ICONS[name]:
-            if family is None or family in installed:
-                return family or theme.FONT_FAMILY, glyph
-        return theme.FONT_FAMILY, theme.THEME_ICONS[name][-1][1]
+    def open_exports(self) -> None:
+        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        path = str(EXPORT_DIR.resolve())
+        if sys.platform == "win32":
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
 
-    def _toggle_theme(self) -> None:
-        self.palette = theme.LIGHT_PALETTE if self.dark else theme.DARK_PALETTE
-        self.colors = theme.PALETTES[self.palette]
-        self._apply_palette()
-        save_palette(self.palette)
+    def open_update(self) -> None:
+        """Install the update if this build can, or else show its release page."""
+        with self._lock:
+            if self._update is None or self._updating:
+                return
+            asset = self_update.find_asset(self._update)
+            if asset is None:
+                webbrowser.open(self._update.release_url)
+            elif self._capture_running():
+                self._append((TEXT["update_blocked"], "warning"))
+            else:
+                self._updating = True
+                self._emit("update", text=TEXT["update_downloading"].format(percent=0), busy=True)
+                threading.Thread(target=self._run_update, args=(asset,), daemon=True).start()
 
-    def _configure_styles(self) -> None:
-        c, f = self.colors, theme.FONTS
-        style = ttk.Style(self.root)
-        # "clam" is the built-in theme that honours custom colors on every platform.
-        style.theme_use("clam")
+    def open_tracker(self, key: str) -> None:
+        """Open a tracker site with the exports folder alongside it, ready to drag from."""
+        site = trackers.SITES.get(key)
+        if not site:
+            return
+        folder_needed = not exports_folder_is_open()
+        webbrowser.open(site["url"])
+        if folder_needed:
+            time.sleep(BROWSER_SETTLE_SECONDS)
+            try:
+                self.open_exports()
+            except OSError:
+                pass  # The site is open, which is the main thing.
 
-        style.configure(
-            ".",
-            background=c["bg"],
-            foreground=c["text"],
-            font=f["body"],
-            bordercolor=c["border"],
-            lightcolor=c["surface"],
-            darkcolor=c["surface"],
-            troughcolor=c["field"],
-            fieldbackground=c["field"],
-            insertcolor=c["text"],
-            selectbackground=c["select"],
-            selectforeground=c["text"],
-            focuscolor=c["accent"],
-        )
-        style.configure("TFrame", background=c["bg"])
-        style.configure("Card.TFrame", background=c["surface"])
-
-        style.configure("TLabel", background=c["bg"], foreground=c["text"])
-        style.configure("Title.TLabel", font=f["title"])
-        style.configure("Subtitle.TLabel", font=f["subtitle"], foreground=c["muted"])
-        style.configure("Heart.TLabel", font=f["subtitle"], foreground=c["error"])
-        style.configure("Link.TLabel", font=f["heading"], foreground=c["warning"])
-        style.configure("Card.TLabel", background=c["surface"])
-        style.configure("Heading.Card.TLabel", font=f["heading"])
-        style.configure("Hint.Card.TLabel", font=f["hint"], foreground=c["muted"])
-        style.configure("Muted.Card.TLabel", foreground=c["muted"])
-        style.configure(
-            "Status.TLabel", background=c["surface"], foreground=c["muted"], padding=(self.px(16), self.px(6))
-        )
-
-        for widget in ("TCheckbutton", "TRadiobutton"):
-            style.configure(
-                widget,
-                background=c["surface"],
-                foreground=c["text"],
-                indicatorbackground=c["field"],
-                indicatorforeground=c["accent_text"],
-                indicatorsize=self.px(14),
-                indicatormargin=(0, 0, self.px(8), 0),
-                upperbordercolor=c["border"],
-                lowerbordercolor=c["border"],
-            )
-            style.map(
-                widget,
-                background=[("active", c["surface"])],
-                foreground=[("disabled", c["muted"])],
-                indicatorbackground=[
-                    ("disabled", c["surface_alt"]),
-                    ("selected", c["accent"]),
-                    ("pressed", c["accent_hover"]),
-                ],
-            )
-        # Radio buttons read better as an accent dot on the field than as a filled circle.
-        style.configure("TRadiobutton", indicatorforeground=c["accent"])
-        style.map(
-            "TRadiobutton",
-            indicatorbackground=[("disabled", c["surface_alt"]), ("pressed", c["surface_alt"])],
-            upperbordercolor=[("selected", c["accent"])],
-            lowerbordercolor=[("selected", c["accent"])],
-        )
-
-        style.configure("TEntry", foreground=c["text"], padding=self.px(5))
-        style.map(
-            "TEntry",
-            bordercolor=[("focus", c["accent"])],
-            lightcolor=[("focus", c["accent"])],
-            fieldbackground=[("disabled", c["surface_alt"])],
-            foreground=[("disabled", c["muted"])],
-        )
-        style.configure("TCombobox", background=c["surface_alt"], arrowcolor=c["text"], padding=self.px(5))
-        style.map(
-            "TCombobox",
-            fieldbackground=[("readonly", c["field"]), ("disabled", c["surface_alt"])],
-            foreground=[("disabled", c["muted"])],
-            selectbackground=[("readonly", c["field"])],
-            selectforeground=[("readonly", c["text"])],
-            bordercolor=[("focus", c["accent"])],
-            arrowcolor=[("disabled", c["muted"])],
-        )
-
-        style.configure(
-            "TButton",
-            background=c["surface_alt"],
-            foreground=c["text"],
-            padding=(self.px(14), self.px(8)),
-            borderwidth=0,
-            lightcolor=c["surface_alt"],
-            darkcolor=c["surface_alt"],
-        )
-        style.map("TButton", background=[("active", c["border"]), ("disabled", c["surface_alt"])])
-        style.configure(
-            "Toggle.TButton",
-            background=c["bg"],
-            foreground=c["muted"],
-            lightcolor=c["bg"],
-            darkcolor=c["bg"],
-            padding=self.px(8),
-            width=0,  # clam gives buttons an 11-character minimum width; size to the icon instead
-        )
-        style.map(
-            "Toggle.TButton",
-            background=[("active", c["surface_alt"])],
-            foreground=[("active", c["text"])],
-            lightcolor=[("active", c["surface_alt"])],
-            darkcolor=[("active", c["surface_alt"])],
-        )
-        for name, color, hover in (
-            ("Accent.TButton", c["accent"], c["accent_hover"]),
-            ("Danger.TButton", c["error"], c["error_hover"]),
-        ):
-            style.configure(
-                name,
-                background=color,
-                foreground=c["accent_text"],
-                font=f["heading"],
-                lightcolor=color,
-                darkcolor=color,
-            )
-            style.map(
-                name,
-                background=[("disabled", c["surface_alt"]), ("active", hover)],
-                foreground=[("disabled", c["muted"])],
-                lightcolor=[("disabled", c["surface_alt"]), ("active", hover)],
-                darkcolor=[("disabled", c["surface_alt"]), ("active", hover)],
-            )
-
-        style.configure(
-            "Treeview",
-            background=c["field"],
-            fieldbackground=c["field"],
-            foreground=c["text"],
-            rowheight=self.px(theme.LAYOUT["row_height"]),
-            borderwidth=0,
-        )
-        style.map("Treeview", background=[("selected", c["select"])], foreground=[("selected", c["text"])])
-        style.configure(
-            "Treeview.Heading",
-            background=c["surface_alt"],
-            foreground=c["muted"],
-            font=f["heading"],
-            relief="flat",
-            padding=(self.px(8), self.px(4)),
-        )
-        style.map("Treeview.Heading", background=[("active", c["surface_alt"])])
-        style.configure(
-            "Vertical.TScrollbar",
-            background=c["surface_alt"],
-            troughcolor=c["field"],
-            arrowcolor=c["muted"],
-            bordercolor=c["field"],
-            lightcolor=c["surface_alt"],
-            darkcolor=c["surface_alt"],
-            gripcount=0,
-            arrowsize=self.px(12),
-        )
-        # clam's defaults paint a light-grey thumb when disabled (nothing to scroll) or hovered.
-        style.map(
-            "Vertical.TScrollbar",
-            background=[("disabled", c["surface_alt"]), ("active", c["border"])],
-            lightcolor=[("disabled", c["surface_alt"]), ("active", c["border"])],
-            darkcolor=[("disabled", c["surface_alt"]), ("active", c["border"])],
-        )
-        style.configure("TSeparator", background=c["border"])
-
-    def _build_layout(self) -> None:
-        pad, gap = self.px(theme.LAYOUT["padding"]), self.px(theme.LAYOUT["gap"])
-
-        ttk.Label(self.root, textvariable=self.status, style="Status.TLabel", anchor="w").pack(
-            side="bottom", fill="x"
-        )
-        outer = ttk.Frame(self.root, padding=pad)
-        outer.pack(fill="both", expand=True)
-
-        header = ttk.Frame(outer)
-        header.pack(fill="x")
-        title_row = ttk.Frame(header)
-        title_row.pack(fill="x")
-        ttk.Label(title_row, text=TEXT["title"], style="Title.TLabel").pack(side="left")
-        ttk.Label(title_row, text=f"v{EXPORTER_VERSION}", style="Subtitle.TLabel").pack(
-            side="left", padx=(self.px(8), 0), pady=(self.px(6), 0)
-        )
-        self.theme_button = ttk.Button(title_row, style="Toggle.TButton", command=self._toggle_theme)
-        self.theme_button.pack(side="right")
-        Tooltip(self, self.theme_button, lambda: TEXT["theme_to_light"] if self.dark else TEXT["theme_to_dark"])
-        self.update_label = ttk.Label(title_row, style="Link.TLabel", cursor="hand2")
-        self.update_label.pack(side="right", padx=(0, self.px(12)))
-        subtitle_row = ttk.Frame(header)
-        subtitle_row.pack(anchor="w")
-        for text, label_style in (
-            (TEXT["subtitle"].format(game=GAME_NAME), "Subtitle.TLabel"),
-            (TEXT["credit_before"], "Subtitle.TLabel"),
-            ("♥", "Heart.TLabel"),
-            (TEXT["credit_after"], "Subtitle.TLabel"),
-        ):
-            ttk.Label(subtitle_row, text=text, style=label_style).pack(side="left")
-
-        body = ttk.Frame(outer)
-        body.pack(fill="both", expand=True, pady=(gap, 0))
-        body.columnconfigure(1, weight=1)
-        body.rowconfigure(0, weight=1)
-
-        self._build_sidebar(body).grid(row=0, column=0, sticky="ns", padx=(0, gap))
-
-        main = ttk.Frame(body)
-        main.grid(row=0, column=1, sticky="nsew")
-        main.columnconfigure(0, weight=1)
-        main.rowconfigure(0, weight=2)
-        main.rowconfigure(1, weight=3)
-        self._build_captured(main).grid(row=0, column=0, sticky="nsew", pady=(0, gap))
-        self._build_activity(main).grid(row=1, column=0, sticky="nsew")
-
-    def _build_sidebar(self, parent: tk.Misc) -> ttk.Frame:
-        pad = self.px(theme.LAYOUT["padding"])
-        wrap = self.px(theme.LAYOUT["sidebar_width"])
-        card = ttk.Frame(parent, style="Card.TFrame", padding=pad)
-
-        ttk.Label(card, text=TEXT["settings"], style="Heading.Card.TLabel").pack(anchor="w", pady=(0, self.px(8)))
-
-        backend = ttk.Combobox(card, textvariable=self.backend, values=BACKENDS, state="readonly")
-        self.backend_box = backend
-        interface_ip = ttk.Entry(card, textvariable=self.interface_ip)
-        user_uid = ttk.Entry(card, textvariable=self.user_uid)
-        for label, widget, hint in (
-            (TEXT["backend"], backend, TEXT["backend_hint"]),
-            (TEXT["interface_ip"], interface_ip, TEXT["interface_ip_hint"]),
-            (TEXT["user_uid"], user_uid, TEXT["user_uid_hint"]),
-        ):
-            ttk.Label(card, text=label, style="Card.TLabel").pack(anchor="w")
-            widget.pack(fill="x", pady=(self.px(2), 0))
-            ttk.Label(card, text=hint, style="Hint.Card.TLabel", wraplength=wrap).pack(anchor="w", pady=(self.px(1), self.px(8)))
-
-        copy_clipboard = ttk.Checkbutton(card, text=TEXT["copy_clipboard"], variable=self.copy_clipboard)
-        debug = ttk.Checkbutton(card, text=TEXT["debug"], variable=self.debug)
-        copy_clipboard.pack(anchor="w")
-        debug.pack(anchor="w", pady=(self.px(4), 0))
-        self.setting_widgets = [backend, interface_ip, user_uid, copy_clipboard, debug]
-
-        self.start_button = ttk.Button(
-            card, text=TEXT["start"], style="Accent.TButton", command=self._toggle_capture
-        )
-        self.start_button.pack(fill="x", pady=(pad, self.px(6)))
-        ttk.Button(card, text=TEXT["open_exports"], command=self._open_exports).pack(fill="x")
-        return card
-
-    def _build_captured(self, parent: tk.Misc) -> ttk.Frame:
-        pad = self.px(theme.LAYOUT["padding"])
-        card = ttk.Frame(parent, style="Card.TFrame", padding=pad)
-        card.columnconfigure(0, weight=1)
-        card.rowconfigure(1, weight=1)
-        ttk.Label(card, text=TEXT["captured"], style="Heading.Card.TLabel").grid(
-            row=0, column=0, sticky="w", pady=(0, self.px(8))
-        )
-
-        columns = ("banner", "pages", "status")
-        self.tree = ttk.Treeview(card, columns=columns, show="headings", selectmode="none", height=4)
-        for column, heading, width, stretch in (
-            ("banner", TEXT["col_banner"], 220, True),
-            ("pages", TEXT["col_pages"], 160, True),
-            ("status", TEXT["col_status"], 220, True),
-        ):
-            self.tree.heading(column, text=heading, anchor="w")
-            self.tree.column(column, width=self.px(width), stretch=stretch, anchor="w")
-        scrollbar = ttk.Scrollbar(card, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        self.tree.grid(row=1, column=0, sticky="nsew")
-        scrollbar.grid(row=1, column=1, sticky="ns")
-        return card
-
-    def _build_activity(self, parent: tk.Misc) -> ttk.Frame:
-        pad = self.px(theme.LAYOUT["padding"])
-        card = ttk.Frame(parent, style="Card.TFrame", padding=pad)
-        card.columnconfigure(0, weight=1)
-        card.rowconfigure(1, weight=1)
-        ttk.Label(card, text=TEXT["activity"], style="Heading.Card.TLabel").grid(
-            row=0, column=0, sticky="w", pady=(0, self.px(8))
-        )
-
-        self.log = tk.Text(
-            card,
-            wrap="word",
-            state="disabled",
-            font=theme.FONTS["log"],
-            relief="flat",
-            borderwidth=0,
-            highlightthickness=0,
-            padx=self.px(10),
-            pady=self.px(8),
-            height=8,
-        )
-        self.log.tag_configure("heading", font=(*theme.FONTS["log"][:2], "bold"))
-        scrollbar = ttk.Scrollbar(card, orient="vertical", command=self.log.yview)
-        self.log.configure(yscrollcommand=scrollbar.set)
-        self.log.grid(row=1, column=0, sticky="nsew")
-        scrollbar.grid(row=1, column=1, sticky="ns")
-        return card
+    def resolve_close(self, choice: str) -> None:
+        """Answer to the dialog raised by ``_on_window_closing``."""
+        if choice == "save":
+            with self._lock:
+                self._close_when_done = True
+                self._request_stop()
+        elif choice == "discard":
+            self._close_window()
 
     # ------------------------------------------------------------ capture flow
 
     def _capture_running(self) -> bool:
-        return self.worker is not None and self.worker.is_alive()
-
-    def _toggle_capture(self) -> None:
-        if self._capture_running():
-            self._request_stop()
-        else:
-            self._start_capture()
-
-    def _start_capture(self) -> None:
-        self.rows.clear()
-        self.pages.clear()
-        self.tree.delete(*self.tree.get_children())
-        self.log.configure(state="normal")
-        self.log.delete("1.0", "end")
-        self.log.configure(state="disabled")
-
-        options = {
-            "interface_ip": self.interface_ip.get().strip() or None,
-            "capture_backend": self.backend.get(),
-            "write_debug_csv": self.debug.get(),
-            "user_uid": self.user_uid.get().strip() or None,
-        }
-        # Clipboard writes must happen on the Tk thread, so the copy is done here
-        # after the capture finishes instead of inside the runner.
-        self.copy_after_capture = self.copy_clipboard.get()
-        self.stop_event.clear()
-        self.worker = threading.Thread(target=self._run_capture, args=(options,), daemon=True)
-        self.worker.start()
-        self._set_running(True)
+        return self._worker is not None and self._worker.is_alive()
 
     def _run_capture(self, options: dict) -> None:
         """Runs on the worker thread; reports back only through self.events."""
@@ -479,7 +202,7 @@ class ExporterApp:
             result = run_live_capture(
                 **options,
                 reporter=GuiReporter(self.events),
-                stop_requested=self.stop_event.is_set,
+                stop_requested=self._stop_event.is_set,
             )
         except (LibpcapUnavailable, PermissionError) as exc:
             self.events.put(("failed", str(exc), TEXT["capture_permission_hint"]))
@@ -488,31 +211,48 @@ class ExporterApp:
         else:
             self.events.put(("finished", result))
 
-    def _request_stop(self) -> None:
-        self.stop_event.set()
-        self.start_button.configure(text=TEXT["stopping"], state="disabled")
-        self.status.set(TEXT["status_saving"])
-
-    def _set_running(self, running: bool) -> None:
-        if running:
-            self.start_button.configure(text=TEXT["stop"], style="Danger.TButton", state="normal")
-        else:
-            self.start_button.configure(text=TEXT["start"], style="Accent.TButton", state="normal")
-        for widget in self.setting_widgets:
-            if isinstance(widget, ttk.Combobox):
-                widget.configure(state="disabled" if running else "readonly")
-            else:
-                widget.configure(state="disabled" if running else "normal")
-
-    def _drain_events(self) -> None:
+    def _run_update(self, asset: ReleaseAsset) -> None:
+        """Runs on a worker thread; reports back only through self.events."""
+        target = self_update.current_install()
         try:
-            while True:
-                name, *args = self.events.get_nowait()
-                getattr(self, f"_on_{name}")(*args)
-        except queue.Empty:
-            pass
-        if self.root.winfo_exists():
-            self.root.after(POLL_MS, self._drain_events)
+            downloaded = self_update.download(
+                asset, target, lambda percent: self.events.put(("update_progress", percent))
+            )
+            self.events.put(("update_installing",))
+            self_update.install(downloaded, target)
+        except Exception as exc:
+            self.events.put(("update_failed", str(exc) or type(exc).__name__))
+        else:
+            self._close_window()
+
+    def _request_stop(self) -> None:
+        self._stop_event.set()
+        self._emit("state", state="stopping")
+        self._emit("status", text=TEXT["status_saving"])
+
+    def _on_window_closing(self) -> bool:
+        """Pywebview close hook; returning False keeps the window open."""
+        if self._closing_confirmed or not self._capture_running():
+            return True
+        with self._lock:
+            if not self._close_when_done:
+                self._emit(
+                    "dialog",
+                    kind="close",
+                    title=TEXT["close_title"],
+                    message=TEXT["close_while_running"],
+                    buttons=[
+                        {"label": TEXT["close_cancel"], "value": "cancel", "cancel": True},
+                        {"label": TEXT["close_discard"], "value": "discard"},
+                        {"label": TEXT["close_save"], "value": "save", "primary": True},
+                    ],
+                )
+        return False
+
+    def _close_window(self) -> None:
+        self._closing_confirmed = True
+        # destroy() waits for the UI thread, which may be serving this very call.
+        threading.Thread(target=self._window.destroy, daemon=True).start()
 
     # ---------------------------------------------------------- event handlers
 
@@ -525,17 +265,17 @@ class ExporterApp:
         self._append((f"Capture backend: {backend}{backend_detail}", "muted"))
         self._append((TEXT["ready"], "success"))
         self._append(("", "info"))
-        self.status.set(TEXT["status_listening"].format(ip=local_ip, backend=backend))
+        self._emit("status", text=TEXT["status_listening"].format(ip=local_ip, backend=backend))
 
     def _on_page(self, label: str, page: int | None, recaptured: bool) -> None:
         if page is not None:
-            self.pages.setdefault(label, set()).add(page)
+            self._pages.setdefault(label, set()).add(page)
         action = "recaptured" if recaptured else "page"
         self._append(("+ ", "success"), (label, "info"), (f"  {action} {page}", "muted"))
-        if label not in self.rows or not self._row_has_tag(label, "warning"):
-            self._set_row(label, "Receiving pages", "")
-        else:
+        if self._rows.get(label, {}).get("tag") == "warning":
             self._set_row(label, None, None)
+        else:
+            self._set_row(label, "Receiving pages", "")
 
     def _on_missing(self, label: str, pages: list[int]) -> None:
         page_list = ", ".join(str(page) for page in pages)
@@ -572,243 +312,133 @@ class ExporterApp:
         )
 
     def _on_prompt(self, kind: str, reply: PromptReply) -> None:
+        self._next_prompt += 1
+        self._prompts[self._next_prompt] = reply
         if kind == "user_uid":
-            dialog = PromptDialog(self, TEXT["uid_prompt_title"], TEXT["uid_prompt"])
+            title, message, choices = TEXT["uid_prompt_title"], TEXT["uid_prompt"], None
         else:
+            title, message = TEXT["server_prompt_title"], TEXT["server_prompt"]
             choices = [(server_id, details["name"]) for server_id, details in SERVER_REGIONS.items()]
-            dialog = PromptDialog(self, TEXT["server_prompt_title"], TEXT["server_prompt"], choices)
-        reply.answer(dialog.result)
+        self._emit(
+            "dialog",
+            kind="prompt",
+            id=self._next_prompt,
+            title=title,
+            message=message,
+            choices=choices,
+            buttons=[
+                {"label": TEXT["skip"], "value": "skip", "cancel": True},
+                {"label": TEXT["ok"], "value": "submit", "primary": True},
+            ],
+        )
 
     def _on_finished(self, result: dict) -> None:
-        self._set_running(False)
+        self._emit("state", state="idle")
         exports = result["exports"]
-        if self.copy_after_capture and len(exports) == 1:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(exports[0]["payload"])
-            self._append((TEXT["copied"], "success"))
-        elif self.copy_after_capture and len(exports) > 1:
+        if self._copy_after_capture and len(exports) == 1:
+            # Written by the page; report_copy() logs how that went.
+            self._emit("copy", text=exports[0]["payload"])
+        elif self._copy_after_capture and len(exports) > 1:
             self._append((TEXT["copy_skipped"], "muted"))
         saved = len(exports) + (result["achievement_path"] is not None)
-        self.status.set(TEXT["status_done"].format(count=saved))
-        if self.close_when_done:
-            self.root.destroy()
+        self._emit("status", text=TEXT["status_done"].format(count=saved))
+        if self._close_when_done:
+            self._close_window()
 
     def _on_failed(self, message: str, detail: str) -> None:
-        self._set_running(False)
+        self._emit("state", state="idle")
         self._append((message, "error"))
         self._append((detail, "muted"))
-        self.status.set(TEXT["status_failed"])
-        if self.close_when_done:
-            self.root.destroy()
+        self._emit("status", text=TEXT["status_failed"])
+        if self._close_when_done:
+            self._close_window()
             return
-        messagebox.showerror(TEXT["capture_failed_title"], message, parent=self.root)
+        self._emit(
+            "dialog",
+            kind="alert",
+            title=TEXT["capture_failed_title"],
+            message=message,
+            buttons=[{"label": TEXT["dismiss"], "value": "dismiss", "primary": True, "cancel": True}],
+        )
 
-    def _on_update(self, latest_version: str, release_url: str) -> None:
-        self.update_label.configure(text=TEXT["update_available"].format(version=latest_version))
-        self.update_label.bind("<Button-1>", lambda _event: webbrowser.open(release_url))
+    def _on_update(self, update: UpdateInfo) -> None:
+        self._update = update
+        self._emit("update", text=self._update_label(), busy=False)
+
+    def _on_update_progress(self, percent: int) -> None:
+        if percent != self._update_percent:
+            self._update_percent = percent
+            self._emit("update", text=TEXT["update_downloading"].format(percent=percent), busy=True)
+
+    def _on_update_installing(self) -> None:
+        self._emit("update", text=TEXT["update_installing"], busy=True)
+
+    def _on_update_failed(self, reason: str) -> None:
+        self._updating = False
+        self._update_percent = -1
+        self._append((TEXT["update_failed"].format(reason=reason), "warning"))
+        self._emit("update", text=self._update_label(), busy=False)
+        webbrowser.open(self._update.release_url)
 
     # ----------------------------------------------------------------- helpers
 
-    def _show_instructions(self) -> None:
-        """Fill the idle activity log with the capture steps; cleared when a capture starts."""
-        self._append((TEXT["how_to"], "heading"))
-        self._append(("", "info"))
-        for number, step in enumerate(TEXT["instructions"], start=1):
-            self._append((f"{number}. ", "accent"), (step, "info"))
-            self._append(("", "info"))
+    def _update_label(self) -> str:
+        key = "update_install" if self_update.find_asset(self._update) else "update_available"
+        return TEXT[key].format(version=self._update.latest_version)
+
+    def _emit(self, op: str, **fields) -> None:
+        self._ops.append({"op": op, **fields})
 
     def _append(self, *segments: tuple[str, str]) -> None:
-        self.log.configure(state="normal")
-        for text, tag in segments:
-            self.log.insert("end", text, tag)
-        self.log.insert("end", "\n")
-        self.log.configure(state="disabled")
-        self.log.see("end")
-
-    def _row_has_tag(self, label: str, tag: str) -> bool:
-        return tag in self.tree.item(self.rows[label], "tags")
+        self._emit("log", segments=segments)
 
     def _set_row(self, label: str, status: str | None, tag: str | None) -> None:
         """Insert or update a captured-list row; None keeps the current status/tag."""
-        item = self.rows.get(label)
-        if item is not None:
-            _, _, current_status = self.tree.item(item, "values")
-            current_tags = self.tree.item(item, "tags")
-            status = current_status if status is None else status
-            tag = (current_tags[0] if current_tags else "") if tag is None else tag
-        values = (label, format_pages(self.pages.get(label, set())), status or "")
-        tags = (tag,) if tag else ()
-        if item is None:
-            self.rows[label] = self.tree.insert("", "end", values=values, tags=tags)
-        else:
-            self.tree.item(item, values=values, tags=tags)
-
-    def _open_exports(self) -> None:
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        path = str(EXPORT_DIR.resolve())
-        if sys.platform == "win32":
-            os.startfile(path)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", path])
-        else:
-            subprocess.Popen(["xdg-open", path])
+        row = self._rows.setdefault(label, {"status": "", "tag": ""})
+        if status is not None:
+            row["status"] = status
+        if tag is not None:
+            row["tag"] = tag
+        self._emit("row", label=label, pages=format_pages(self._pages.get(label, set())), **row)
 
     def _check_for_update(self) -> None:
         update = check_for_update(EXPORTER_VERSION)
         if update:
-            self.events.put(("update", update.latest_version, update.release_url))
-
-    def _on_close(self) -> None:
-        if self._capture_running():
-            answer = messagebox.askyesnocancel(TEXT["close_title"], TEXT["close_while_running"], parent=self.root)
-            if answer is None:
-                return
-            if answer:
-                self.close_when_done = True
-                self._request_stop()
-                return
-        self.root.destroy()
+            self.events.put(("update", update))
 
 
-class PromptDialog(tk.Toplevel):
-    """Modal question: a text entry, or radio buttons when ``choices`` is given.
-
-    ``result`` is the entered text / chosen value, or None when skipped.
-    """
-
-    def __init__(
-        self,
-        app: ExporterApp,
-        title: str,
-        message: str,
-        choices: list[tuple[str, str]] | None = None,
-    ) -> None:
-        parent = app.root
-        super().__init__(parent)
-        self.withdraw()
-        self.result: str | None = None
-        self.title(title)
-        self.configure(bg=app.colors["surface"])
-        self.resizable(False, False)
-        self.transient(parent)
-        set_title_bar_theme(self, app.dark)
-
-        pad = app.px(theme.LAYOUT["padding"])
-        frame = ttk.Frame(self, style="Card.TFrame", padding=pad + app.px(4))
-        frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text=message, style="Card.TLabel", wraplength=app.px(380), justify="left").pack(
-            anchor="w", pady=(0, app.px(10))
+def open_explorer_folders() -> list[str]:
+    """Folders open in Windows Explorer; empty elsewhere or if Explorer can't be asked."""
+    if sys.platform != "win32":
+        return []
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", LIST_OPEN_FOLDERS_SCRIPT],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
-
-        self.value = tk.StringVar()
-        if choices:
-            for value, label in choices:
-                ttk.Radiobutton(frame, text=label, value=value, variable=self.value).pack(anchor="w", pady=app.px(1))
-        else:
-            entry = ttk.Entry(frame, textvariable=self.value)
-            entry.pack(fill="x")
-            entry.focus_set()
-
-        buttons = ttk.Frame(frame, style="Card.TFrame")
-        buttons.pack(fill="x", pady=(pad, 0))
-        ttk.Button(buttons, text=TEXT["ok"], style="Accent.TButton", command=self._ok).pack(side="right")
-        ttk.Button(buttons, text=TEXT["skip"], command=self.destroy).pack(side="right", padx=(0, app.px(8)))
-
-        self.bind("<Return>", lambda _event: self._ok())
-        self.bind("<Escape>", lambda _event: self.destroy())
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-
-        self.update_idletasks()
-        x = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_reqwidth()) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_reqheight()) // 3
-        self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
-        self.deiconify()
-        self.grab_set()
-        self.wait_window()
-
-    def _ok(self) -> None:
-        self.result = self.value.get().strip() or None
-        self.destroy()
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-class Tooltip:
-    """Small hover label for icon-only widgets; ``text`` is called each time so it can change."""
-
-    DELAY_MS = 500
-
-    def __init__(self, app: ExporterApp, widget: tk.Widget, text: Callable[[], str]) -> None:
-        self.app = app
-        self.widget = widget
-        self.text = text
-        self.window: tk.Toplevel | None = None
-        self.pending: str | None = None
-        widget.bind("<Enter>", self._schedule, add="+")
-        widget.bind("<Leave>", self._hide, add="+")
-        widget.bind("<ButtonPress>", self._hide, add="+")
-
-    def _schedule(self, _event=None) -> None:
-        self._hide()
-        self.pending = self.widget.after(self.DELAY_MS, self._show)
-
-    def _show(self) -> None:
-        self.pending = None
-        c, px = self.app.colors, self.app.px
-        self.window = tk.Toplevel(self.widget)
-        self.window.wm_overrideredirect(True)
-        self.window.attributes("-topmost", True)
-        tk.Label(
-            self.window,
-            text=self.text(),
-            font=theme.FONTS["hint"],
-            background=c["surface_alt"],
-            foreground=c["text"],
-            padx=px(8),
-            pady=px(4),
-            borderwidth=1,
-            relief="solid",
-        ).pack()
-        self.window.update_idletasks()
-        # Right-align under the widget so a tooltip near the window edge stays on screen.
-        x = self.widget.winfo_rootx() + self.widget.winfo_width() - self.window.winfo_reqwidth()
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + px(4)
-        self.window.geometry(f"+{x}+{y}")
-
-    def _hide(self, _event=None) -> None:
-        if self.pending is not None:
-            self.widget.after_cancel(self.pending)
-            self.pending = None
-        if self.window is not None:
-            self.window.destroy()
-            self.window = None
+def exports_folder_is_open() -> bool:
+    target = os.path.normcase(os.path.normpath(EXPORT_DIR.resolve()))
+    return any(os.path.normcase(os.path.normpath(folder)) == target for folder in open_explorer_folders())
 
 
-def load_palette() -> str:
-    """The palette saved by the theme toggle, or theme.PALETTE on first launch."""
-    try:
-        name = json.loads(PREFS_PATH.read_text(encoding="utf-8")).get("palette")
-    except (OSError, ValueError, AttributeError):
-        name = None
-    return name if name in theme.PALETTES else theme.PALETTE
-
-
-def save_palette(name: str) -> None:
-    try:
-        PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        PREFS_PATH.write_text(json.dumps({"palette": name}), encoding="utf-8")
-    except OSError:
-        pass
-
-
-def set_title_bar_theme(window: tk.Misc, dark: bool) -> None:
-    """Ask Windows 10/11 to draw a dark or light title bar; a no-op elsewhere."""
+def use_dark_title_bar(window) -> None:
+    """Ask Windows 10/11 for a dark title bar to match the page; a no-op elsewhere."""
     if sys.platform != "win32":
         return
     try:
         import ctypes
 
-        window.update_idletasks()  # creates the native frame without mapping a withdrawn window
-        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
-        value = ctypes.c_int(int(dark))
+        hwnd = window.native.Handle.ToInt32()
+        value = ctypes.c_int(1)
         DWMWA_USE_IMMERSIVE_DARK_MODE = 20
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value)
@@ -817,29 +447,57 @@ def set_title_bar_theme(window: tk.Misc, dark: bool) -> None:
         pass
 
 
-def _enable_dpi_awareness() -> None:
-    """Render crisply on high-DPI Windows displays instead of being bitmap-scaled."""
-    if sys.platform != "win32":
-        return
-    try:
+def _create_window(webview, bridge: Bridge, hidden: bool = False):
+    window = webview.create_window(
+        TEXT["window_title"],
+        url=str(WEB_DIR / "index.html"),
+        js_api=bridge,
+        width=theme.WINDOW["size"][0],
+        height=theme.WINDOW["size"][1],
+        min_size=theme.WINDOW["min_size"],
+        background_color=theme.WINDOW["background"],
+        text_select=True,
+        hidden=hidden,
+    )
+    bridge._attach(window)
+    window.events.closing += bridge._on_window_closing
+    return window
+
+
+def _start_options() -> dict:
+    # A local http server gives the page a secure context for the clipboard API.
+    # Windows must not fall back to the legacy MSHTML engine, which cannot render the page.
+    options: dict = {"http_server": True}
+    if sys.platform == "win32":
+        options["gui"] = "edgechromium"
+    return options
+
+
+def _show_startup_error(error: Exception) -> None:
+    """A windowed build has no console, so report a failed start with a native dialog."""
+    message = TEXT["webview_missing"].format(error=error)
+    print(message, file=sys.stderr)
+    if sys.platform == "win32":
         import ctypes
 
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:
-        pass
+        MB_ICONERROR = 0x10
+        ctypes.windll.user32.MessageBoxW(None, message, TEXT["window_title"], MB_ICONERROR)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
-    _enable_dpi_awareness()
     if "--smoke-test" in args:
         return _smoke_test()
     _use_writable_working_dir()
-    root = tk.Tk()
-    root.withdraw()
-    ExporterApp(root)
-    root.deiconify()
-    root.mainloop()
+    threading.Thread(target=self_update.remove_leftovers, daemon=True).start()
+    try:
+        import webview
+
+        _create_window(webview, Bridge())
+        webview.start(**_start_options())
+    except Exception as exc:
+        _show_startup_error(exc)
+        return 1
     return 0
 
 
@@ -864,21 +522,29 @@ def _use_writable_working_dir() -> None:
 
 
 def _smoke_test() -> int:
-    """Build the whole window once and exit; used by CI to check packaged builds.
+    """Load the whole page in a hidden window and exit; used by CI to check packaged builds.
 
-    A windowed build has no console and shows a blocking dialog on an uncaught
-    error, so failures are turned into exit code 1 instead.
+    Passes only if the page's script reached the bridge, which proves the
+    webview, the bundled web files and the JavaScript link all work. A windowed
+    build has no console and shows a blocking dialog on an uncaught error, so
+    failures are turned into exit code 1 instead.
     """
     try:
-        root = tk.Tk()
-        root.withdraw()
-        ExporterApp(root)
-        root.update()
-        root.destroy()
+        import webview
+
+        bridge = Bridge()
+        window = _create_window(webview, bridge, hidden=True)
+        outcome: list[bool] = []
+
+        def wait_for_page() -> None:
+            outcome.append(bridge._ready.wait(SMOKE_TIMEOUT_SECONDS))
+            window.destroy()
+
+        webview.start(wait_for_page, **_start_options())
+        return 0 if outcome == [True] else 1
     except Exception:
         traceback.print_exc()
         return 1
-    return 0
 
 
 if __name__ == "__main__":

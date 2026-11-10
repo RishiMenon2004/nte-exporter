@@ -18,7 +18,10 @@ a = Analysis(
     [str(root / "src" / "nte_history_exporter" / "gui" / "__main__.py")],
     pathex=[str(root / "src")],
     binaries=[],
-    datas=[(str(root / "mappings"), "mappings")],
+    datas=[
+        (str(root / "mappings"), "mappings"),
+        (str(root / "src" / "nte_history_exporter" / "gui" / "web"), "nte_history_exporter/gui/web"),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

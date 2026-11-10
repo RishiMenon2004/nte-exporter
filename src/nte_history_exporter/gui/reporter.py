@@ -23,8 +23,8 @@ class PromptReply:
 class GuiReporter:
     """Stands in for the ``console`` module while the runner works on a background thread.
 
-    Tk widgets may only be touched from the main thread, so each call is turned
-    into an event tuple ``(name, *args)`` on a queue that the window drains.
+    The window is only updated from its poll loop, so each call is turned
+    into an event tuple ``(name, *args)`` on a queue that the bridge drains.
     """
 
     def __init__(self, events: queue.Queue) -> None:

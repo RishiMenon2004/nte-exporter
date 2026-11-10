@@ -1,9 +1,10 @@
 # Desktop GUI
 
-The desktop GUI is a Tkinter window around the same live-capture code the CLI
-uses. It needs nothing beyond the Python standard library.
+The desktop GUI is an HTML/CSS page in a [pywebview](https://pywebview.flowrl.com/)
+window, around the same live-capture code the CLI uses. The page runs in the
+system's webview, and Python keeps the capture logic.
 
-<img src="images/gui-demo.png" width="640" alt="GUI during a capture: settings sidebar, captured banners table, and activity log" />
+<img src="images/gui-demo.png" width="640" alt="GUI during a capture: settings panel, captured banners list, and activity log" />
 
 ## Running it
 
@@ -11,7 +12,13 @@ uses. It needs nothing beyond the Python standard library.
 
 Each [release](https://github.com/RishiMenon2004/nte-exporter/releases) has a
 GUI build for every platform. Packet capture needs the same permissions as the
-CLI, which is where the platforms differ.
+CLI, which is where the platforms differ. The window also needs a webview:
+
+| Platform | Webview |
+| -------- | ------- |
+| Windows | Microsoft Edge WebView2 Runtime. Included with Windows 11 and most updated Windows 10 installs; the app says so if it is missing. |
+| Linux | WebKitGTK (`libwebkit2gtk-4.1`) from your distribution. |
+| macOS | WKWebView, part of the system. |
 
 **Windows**: `nte-history-exporter-gui.exe`
 
@@ -68,6 +75,19 @@ Rosetta 2.
 
 ### From source
 
+The CLI has no dependencies, but the GUI needs pywebview:
+
+```bash
+pip install -e ".[gui]"
+```
+
+On Linux that also builds PyGObject, which needs the GTK and WebKit development
+packages. On Ubuntu:
+
+```bash
+sudo apt-get install libgirepository-2.0-dev libcairo2-dev pkg-config gir1.2-gtk-3.0 gir1.2-webkit2-4.1
+```
+
 | From | Command |
 | ---- | ------- |
 | Source checkout (Windows) | Double-click `run-exporter-gui.cmd` |
@@ -82,10 +102,16 @@ the CLI. To build the packaged GUI yourself, see
 
 ```text
 src/nte_history_exporter/gui/
-  theme.py     colors, fonts, sizes, every string shown in the window   <- start here
-  app.py       window layout, ttk styles, capture thread, event handlers
-  reporter.py  GuiReporter: turns runner output into queue events
-  __main__.py  `python -m nte_history_exporter.gui`
+  web/style.css  colors, fonts, sizes, shapes                <- start here for looks
+  web/index.html page structure
+  web/app.js     draws what the bridge sends, handles clicks
+  web/fonts/     bundled Syne and Barlow Condensed, with their licences
+  theme.py       every string shown in the window, window size
+  trackers.py    tracker sites and what each one accepts
+  self_update.py replaces the packaged program with a newer release
+  app.py         Bridge (the page's API), capture thread, event handlers
+  reporter.py    GuiReporter: turns runner output into queue events
+  __main__.py    `python -m nte_history_exporter.gui`
 ```
 
 `run_live_capture()` in `live_capture/runner.py` takes two optional arguments
@@ -95,166 +121,147 @@ that the CLI leaves at their defaults:
   (`print_page_captured`, `prompt_user_uid`, ...). The CLI passes `console`;
   the GUI passes a `GuiReporter`.
 - `stop_requested`: a callable polled for every packet or read timeout. The CLI
-  uses the press-any-key monitor; the GUI passes `stop_event.is_set`.
+  uses the press-any-key monitor; the GUI passes `_stop_event.is_set`.
 
-Capture runs on a background thread, and Tk widgets may only be touched from
-the main thread. So `GuiReporter` never touches widgets: each call becomes an
-event tuple such as `("page", "Standard Board", 3, False)` on a queue, and
-`ExporterApp._drain_events` polls that queue every 50 ms and calls the handler
-`_on_<event name>`. Prompts (missing UID/server) send a `PromptReply`; the
-capture thread blocks on it until the dialog is answered.
+The flow from capture to screen:
+
+1. Capture runs on a worker thread. `GuiReporter` turns each call into an event
+   tuple such as `("page", "Standard Board", 3, False)` on a queue.
+2. The page calls `pywebview.api.poll()` every 80 ms.
+3. `Bridge.poll` drains the queue, calling the handler `_on_<event name>` for
+   each event. Handlers keep the state (rows, page sets) and queue render
+   operations: plain dicts such as `{"op": "row", "label": ..., "status": ...}`.
+4. `poll` returns those operations, and the `ops` table in `web/app.js` draws them.
+
+So decisions live in Python, where `tests/test_gui.py` can check them, and
+`app.js` only draws. Prompts (missing UID/server) send a `PromptReply`; the
+capture thread blocks on it until the page calls `answer_prompt`.
+
+Every public method of `Bridge` can be called from the page. Names starting with
+`_` are hidden from it, so keep helpers private.
 
 ## Customizing
 
-Most changes only touch `theme.py`. To see a change, close and relaunch the
-window; there is no hot reload.
+Looks live in `web/style.css`; wording and window size live in `theme.py`. To see
+a change, close and relaunch the window; there is no hot reload.
 
 ### Colors
 
-The sun/moon button in the header switches palettes while the app runs. Its
-icons are set in `THEME_ICONS`: each is a list of `(font, glyph)` pairs, and the
-first font installed on the machine is used. Windows gets Segoe Fluent Icons
-(or Segoe MDL2 Assets on Windows 10). Elsewhere the fallback is a Unicode
-☀/☾ in the body font. `THEME_ICON_SIZE` sets the size, and the hover tooltip
-text is `TEXT["theme_to_light"]` / `TEXT["theme_to_dark"]`.
-
-The choice is saved to `%APPDATA%\nte-history-exporter\gui.json`
-(`~/.config/nte-history-exporter/gui.json` on Linux/macOS) and used on the next
-launch. Delete that file to go back to the default.
-
-The palette settings in `theme.py`:
-
-```python
-PALETTE = "dark"         # used on first launch, before the toggle is ever clicked
-DARK_PALETTE = "dark"    # the toggle switches between these two
-LIGHT_PALETTE = "light"
-```
-
-To make your own, copy one of the entries in `PALETTES`, give it a new name,
-change the hex values, and point `DARK_PALETTE` or `LIGHT_PALETTE` at it (and
-`PALETTE`, if it should be the first-launch default). Whatever `DARK_PALETTE`
-names also gets a dark Windows title bar. If your saved choice no longer exists
-in `PALETTES`, the app falls back to `PALETTE`. Every key must be present,
-because `app.py` builds all the widget styles from these tokens:
+Colors are CSS variables in `:root` at the top of `style.css`. Use the variables
+rather than hex values in the rules below them.
 
 | Token | Used for |
 | ----- | -------- |
-| `bg` | window background |
-| `surface` | cards (sidebar, Captured, Activity), status bar, dialogs |
-| `surface_alt` | secondary buttons, table headings, disabled inputs, scrollbar thumb |
-| `field` | inputs, table body, activity log body, scrollbar trough |
-| `border` | input borders, separators, hovered secondary button |
-| `text` / `muted` | primary text / hints and secondary text |
-| `accent` / `accent_hover` | Start button, focus rings, checked boxes, step numbers |
-| `accent_text` | text on accent and danger buttons; pick for contrast against both |
-| `success` / `warning` / `error` | log lines and table rows; `error` also colors the Stop button |
-| `error_hover` | hovered Stop button |
-| `select` | selected text and selected rows |
-
-All color application lives in `ExporterApp._apply_palette`, which runs at
-startup and on every toggle. ttk widgets pick up the new styles automatically.
-Plain Tk widgets (the activity log, table row tags, the combobox dropdown, and
-the title bar) are recolored there by hand. If you add a plain `tk` widget, or
-color something outside `_configure_styles`, recolor it in `_apply_palette` too,
-or it will keep the old palette after a toggle.
+| `--pink` / `--pink-hover` | primary button, active controls, version pill |
+| `--danger` / `--danger-hover` | Stop button |
+| `--page` / `--stripe` | area behind the panels and its faint diagonal stripes |
+| `--chrome` | title bar |
+| `--panel` / `--on-panel` / `--on-panel-muted` | panels, and text on them |
+| `--well` / `--on-well` / `--on-well-muted` | recessed areas: table, log, inputs |
+| `--row` | captured-list rows |
+| `--on-page` / `--on-page-muted` | status bar text |
+| `--accent-text` | pink text on a well, adjusted for contrast |
+| `--success` / `--warning` / `--error` | log lines and status badges |
 
 ### Fonts
 
-`FONTS` maps a role to a Tk font tuple `(family, size, optional style)`, and
-`FONT_FAMILY` / `MONO_FAMILY` are picked per platform. For example:
-
-```python
-FONTS["title"] = ("Bahnschrift", 20, "bold")
-FONTS["log"] = ("Cascadia Mono", 10)
-```
-
-If a family isn't installed, Tk silently falls back to a default font. To list
-the families available on a machine:
-
-```python
-import tkinter, tkinter.font
-tkinter.Tk(); print(sorted(tkinter.font.families()))
-```
+Two families are bundled in `web/fonts/` and declared with `@font-face` at the
+top of `style.css`: Syne for headings and Barlow Condensed for everything else.
+The log uses the system's monospace font. To add a font, drop the file in
+`web/fonts/`, add a `@font-face`, and include its licence if it needs one.
 
 ### Sizes and spacing
 
-`WINDOW` (initial and minimum size) and `LAYOUT` (padding, gaps, sidebar text
-wrap width, table row height) are in pixels **at 100% display scaling**.
-`ExporterApp.px()` multiplies them by the OS scale factor, so at 150% scaling
-`padding: 16` becomes 24 px. Font sizes are in points and Tk scales those itself.
+`--radius-panel`, `--radius-well`, `--gap`, `--page-padding` and `--titlebar-height`
+are in `:root`. `theme.WINDOW` sets the initial and minimum window size. The webview
+applies the OS display scale, so CSS pixels are the same at any scaling.
 
-If you add text to the sidebar, raise `WINDOW["min_size"]` so the sidebar can't
-be squeezed until its buttons are cut off.
+If you add text to the sidebar, check it at the minimum window size. The
+`@media (max-height: 700px)` block tightens the sidebar to keep both buttons in
+view there.
 
 ### Text
 
 Every string the window shows is in `TEXT`: labels, hints, button captions,
 status-bar messages, dialog prompts, and the "How to capture" steps shown in
 the Activity panel while idle (`TEXT["instructions"]`, one entry per step).
-Some strings take placeholders, such as `{ip}`, `{backend}`, `{count}`,
-`{version}` and `{game}`. Keep those when you reword them.
+Some strings take placeholders, such as `{ip}`, `{backend}`, `{count}` and
+`{version}`. Keep those when you reword them.
+
+In `index.html`, `data-text="key"` fills an element from `TEXT`. A test checks
+that every key used by the page exists.
 
 The results notes written after a capture (for example "No history pages were
 captured.") come from `runner.py` and are shared with the CLI, so change them
 there.
 
+### Tracker buttons
+
+The "Import in" buttons in the Captured header come from `trackers.SITES`. Add an
+entry with a `label` and `url` to add a button. The page only passes the key, so
+it can't open anything that isn't listed there.
+
+Clicking one also opens the exports folder just after the site, so it lands on
+top and a file can be dragged straight onto the page. On Windows it first asks
+Explorer which folders are open and skips this if the folder is already there.
+Other platforms have no such check, so they always ask the file manager to open
+it.
+
+### Updates
+
+When GitHub has a newer release, a pill appears in the title bar. In a packaged
+build, clicking it downloads that platform's file from the release, checks it
+against the SHA-256 GitHub publishes, replaces the running program and starts the
+new one. The logic is in `gui/self_update.py`, and `asset_name()` there has to match
+the file names in `.github/workflows/release.yml`.
+
+The pill just opens the release page when run from source, or if the release has no
+file for this platform. A failed update, such as one in a protected folder, logs why
+and does the same. It waits for a running capture, and only the GUI is replaced: a
+CLI executable beside it keeps its version.
+
 ### Activity log colors
 
-`LOG_COLORS` maps a log tag to a palette token. To add a style, add a tag here
-and use it in `app.py`:
+Each log segment is a `(text, tag)` pair, and the tag becomes a CSS class under
+`.log`. To add a style, add a rule and use the tag in `app.py`:
+
+```css
+.log .highlight {
+  color: var(--pink);
+}
+```
 
 ```python
-# theme.py
-LOG_COLORS["highlight"] = "accent"
-
 # app.py, inside any handler
 self._append(("Nice pull!", "highlight"))
 ```
 
-`_append` takes any number of `(text, tag)` segments and writes them as one
-line, which is how a single log line gets several colors.
+`_append` takes any number of segments and writes them as one line, which is how
+a single log line gets several colors.
 
-## Going further (app.py)
+## Going further
 
-### Restyling a widget type
+### Debugging the page
 
-All ttk styling happens in `ExporterApp._configure_styles`, which uses the
-built-in `clam` theme because it respects custom colors on every platform
-(the native Windows theme ignores most of them). Style names follow ttk's
-`Variant.Base` convention: `Accent.TButton` inherits from `TButton`, and
-`Hint.Card.TLabel` inherits from `Card.TLabel`. To add a variant:
-
-```python
-style.configure("Ghost.TButton", background=c["surface"], foreground=c["accent"])
-style.map("Ghost.TButton", background=[("active", c["surface_alt"])])
-...
-ttk.Button(card, text="Help", style="Ghost.TButton", command=...)
-```
-
-`configure` sets the normal look and `map` sets per-state overrides
-(`active` = hovered, `pressed`, `disabled`, `selected`, `focus`). If a widget
-shows an unexpected light-grey patch, it is usually a clam default for a state
-you haven't mapped. For example, scrollbars use the `disabled` state when
-there is nothing to scroll. Check the defaults with
-`ttk.Style().map("TScrollbar")`.
+Pass `debug=True` to `webview.start` in `app.main` to open the browser dev tools
+with the window.
 
 ### Moving things around
 
-Layout is split into `_build_sidebar`, `_build_captured` and `_build_activity`,
-which `_build_layout` arranges in a grid. Each returns a card frame:
+`.page` in `style.css` is a CSS grid holding the settings, Captured and Activity
+panels and the status bar.
 
-- Swap `column=0` and `column=1` in `_build_layout` to put the sidebar on the right.
-- Change `main.rowconfigure(0, weight=2)` / `(1, weight=3)` to change how
-  space is split between the Captured table and the Activity log.
-- Add a setting by creating a `tk.StringVar`/`BooleanVar` in `__init__`,
-  adding the widget in `_build_sidebar`, listing it in `self.setting_widgets`
-  (so it is disabled during capture), and passing its value in the
-  `options` dict in `_start_capture`.
+- Change `grid-template-rows` on `.page` to change how space is split between the
+  Captured table and the Activity log.
+- Add a setting by adding its input to `index.html`, sending its value from the
+  `submit` handler in `app.js`, listing it in the `state` operation (so it locks
+  during capture), and reading it in `Bridge.start_capture`.
 
 ### Reacting to a new kind of event
 
 1. Add a method to `GuiReporter` that calls `self._emit("my_event", ...)`.
-2. Add `_on_my_event(self, ...)` to `ExporterApp`.
+2. Add `_on_my_event(self, ...)` to `Bridge`. If it changes the screen, call
+   `self._emit("my_op", ...)` and add `my_op` to the `ops` table in `web/app.js`.
 
 If the runner should call it, add the same function to `console.py` too, so
 the CLI keeps working with the default reporter. `tests/test_gui.py` shows how
@@ -266,17 +273,17 @@ You don't need live traffic to iterate on the look. Put events on the queue
 yourself:
 
 ```python
-import tkinter as tk
-from nte_history_exporter.gui.app import ExporterApp
+import webview
+from nte_history_exporter.gui import app
 
-root = tk.Tk()
-app = ExporterApp(root)
-app.events.put(("listening", "192.0.2.10", "npcap", ""))
+bridge = app.Bridge()
+app._create_window(webview, bridge)
+bridge.events.put(("listening", "192.0.2.10", "npcap", ""))
 for page in range(1, 6):
-    app.events.put(("page", "Standard Board", page, False))
-app.events.put(("missing", "Arc Miracle Box", [3]))
-app.events.put(("achievements", 212, 38, 41, 6))
-root.mainloop()
+    bridge.events.put(("page", "Standard Board", page, False))
+bridge.events.put(("missing", "Arc Miracle Box", [3]))
+bridge.events.put(("achievements", 212, 38, 41, 6))
+webview.start(**app._start_options())
 ```
 
 Run it with `PYTHONPATH=src`.

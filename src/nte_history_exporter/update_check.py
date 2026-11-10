@@ -8,6 +8,15 @@ from typing import Any
 
 LATEST_RELEASE_API_URL = "https://api.github.com/repos/RishiMenon2004/nte-exporter/releases/latest"
 RELEASES_URL = "https://github.com/RishiMenon2004/nte-exporter/releases"
+RELEASE_DOWNLOAD_URL = f"{RELEASES_URL}/download/"
+
+
+@dataclass(frozen=True)
+class ReleaseAsset:
+    name: str
+    url: str
+    size: int
+    digest: str
 
 
 @dataclass(frozen=True)
@@ -15,6 +24,7 @@ class UpdateInfo:
     current_version: str
     latest_version: str
     release_url: str
+    assets: tuple[ReleaseAsset, ...] = ()
 
 
 def check_for_update(current_version: str, *, timeout: float = 1.5) -> UpdateInfo | None:
@@ -40,7 +50,25 @@ def check_for_update(current_version: str, *, timeout: float = 1.5) -> UpdateInf
         current_version=current_version,
         latest_version=latest_version,
         release_url=release_url,
+        assets=_release_assets(latest),
     )
+
+
+def _release_assets(latest: dict[str, Any]) -> tuple[ReleaseAsset, ...]:
+    assets = []
+    for asset in latest.get("assets") or ():
+        try:
+            assets.append(
+                ReleaseAsset(
+                    name=str(asset["name"]),
+                    url=str(asset["browser_download_url"]),
+                    size=int(asset.get("size") or 0),
+                    digest=str(asset.get("digest") or ""),
+                )
+            )
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+    return tuple(assets)
 
 
 def fetch_latest_release(*, timeout: float) -> dict[str, Any]:

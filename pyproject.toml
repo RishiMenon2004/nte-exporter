@@ -7,12 +7,19 @@ dependencies = []
 
 [project.optional-dependencies]
 build = ["pyinstaller>=6.0"]
+gui = [
+    "pywebview>=6.2,<7",
+    "PyGObject>=3.50; sys_platform == 'linux'",
+]
 
 [project.scripts]
 nte-history-exporter = "nte_history_exporter.cli:main"
 
 [project.gui-scripts]
 nte-history-exporter-gui = "nte_history_exporter.gui.app:main"
+
+[tool.setuptools.package-data]
+"nte_history_exporter.gui" = ["web/*", "web/fonts/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

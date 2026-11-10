@@ -23,7 +23,8 @@ Run live capture from an elevated PowerShell prompt:
 ### Desktop GUI
 
 The GUI has its own windowed spec, `packaging/NTE History Exporter GUI.spec`.
-`tools\build-windows.cmd` builds it after the CLI. To build only the GUI:
+`tools\build-windows.cmd` builds it after the CLI. Building it needs the `gui`
+extra (`pip install -e ".[build,gui]"`). To build only the GUI:
 
 ```powershell
 .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm "packaging\NTE History Exporter GUI.spec"
@@ -36,9 +37,14 @@ The GUI has its own windowed spec, `packaging/NTE History Exporter GUI.spec`.
 | macOS | `dist/NTE History Exporter.app` (one-folder build in a bundle; its version comes from `pyproject.toml`) |
 
 A windowed build has no console to print `--help` to, so it accepts
-`--smoke-test` instead. That builds the whole window, closes it, and exits 0
-on success or 1 on failure. Run it with `start /wait` on Windows (see
+`--smoke-test` instead. That loads the whole page in a hidden window and exits
+0 once its script has reached the Python bridge, or 1 if that fails or takes
+over 60 seconds. Run it with `start /wait` on Windows (see
 `build-windows.cmd`) or under `xvfb-run` on a headless Linux machine.
+
+The page itself (`gui/web/`) is added to the bundle by the spec's `datas`, and
+pywebview's own PyInstaller hook collects its libraries. The webview engine is
+not bundled; each platform uses its system one (see [gui.md](gui.md)).
 
 See [gui.md](gui.md) for runtime permissions on each platform.
 
