@@ -104,17 +104,37 @@ Or simply double-click **`run-exporter.cmd`**.
 
 #### Desktop GUI (preview)
 
-The GUI is a pywebview window around the same live capture. Pick the backend and
-options, click **Start capture**, and watch pages arrive for each banner. Then
-click **Stop & export**. Download it from Releases (see
-[Downloads](#downloads)), or run it from source: double-click
-**`run-exporter-gui.cmd`**, or run `python -m nte_history_exporter.gui` with
-`src` on `PYTHONPATH`. From source it needs `pip install -e ".[gui]"` first. See [docs/gui.md](docs/gui.md) for per-platform setup and
-customization.
+The GUI is a pywebview window around the same live capture. Pick the backend,
+click **Start capture**, and watch pages arrive for each banner. Then click
+**Stop & export**.
 
 <div align="center">
   <img src="docs/images/gui-demo.png" width="560" alt="Desktop GUI during a capture" />
 </div>
+
+Interface IP and debug files are under **Advanced**, since they're rarely needed.
+
+Download it from Releases (see [Downloads](#downloads)), or run it from source by
+double-clicking **`run-exporter-gui.cmd`**. From source it needs
+`pip install -e ".[gui]"` first. See [docs/gui.md](docs/gui.md) for per-platform
+setup and customization.
+
+##### Importing into a tracker
+
+After a capture, **Chiz.Pink** sends the exports straight to Chiz.Pink and opens
+its import page, so there are no files to drag. Mystery Box exports aren't sent,
+because Chiz.Pink doesn't track them.
+
+**NTEWiz** opens the site with the exports folder alongside it, ready to drag the
+files in. Chiz.Pink does the same if there's no capture yet or sending fails.
+
+##### Updates
+
+When a newer release is out, a pill appears in the title bar. In a downloaded
+build, clicking it downloads the update, checks it against GitHub's checksum,
+then replaces the GUI and restarts it.
+
+Run from source, the pill opens the release page instead.
 
 > [!IMPORTANT]
 > Start the exporter **before pressing Start on the game's main menu**. This is
@@ -264,6 +284,11 @@ review workflow.
 
 > [!CAUTION]
 > Sanitized exports are intended for tracker import and should not contain anything especially harmful, but they can identify the game account via user UID and pull history. Share exports only with verified sources, such as known trackers. Do not commit packet captures, generated exports, research briefs, or personal account data. The repository keeps `exports/` as an empty output folder but ignores everything generated inside it.
+
+When the GUI sends a capture to Chiz.Pink, the exports are encrypted on your
+computer first. The key is only in the link that opens in your browser, which
+never sends that part to a server. Chiz.Pink holds the encrypted copy until your
+browser collects it, or for up to 10 minutes, then deletes it.
 
 ## Boundary Policy
 
