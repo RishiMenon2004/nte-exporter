@@ -33,14 +33,16 @@ Achievements are exported too, both completed and in progress.
 
 ## Getting started
 
-Download the exporter for your system from the
-[Releases page](https://github.com/RishiMenon2004/nte-exporter/releases):
+Download the latest exporter for your system:
 
 | System | Download |
 | ------ | -------- |
-| Windows | `nte-history-exporter-gui.exe` |
-| Linux | `nte-history-exporter-gui-linux` |
-| macOS | `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip` |
+| Windows | [nte-history-exporter-gui.exe](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui.exe) |
+| Linux | [nte-history-exporter-gui-linux](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui-linux) |
+| macOS | `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip` from the [latest release](https://github.com/RishiMenon2004/nte-exporter/releases/latest) |
+
+Older versions and the command-line builds are on the
+[Releases page](https://github.com/RishiMenon2004/nte-exporter/releases).
 
 On Windows, install [Npcap](https://npcap.com/) first with its default options.
 Then double-click the exe. It isn't code-signed, so Windows may warn you the

@@ -262,6 +262,9 @@ jobs:
           zip nte-history-exporter-v${version}-x86_64-apple-darwin.zip nte-history-exporter
           # Already zipped with ditto on the macOS runner; just give it a versioned name.
           cp macos/nte-history-exporter-gui-macos.zip nte-history-exporter-gui-v${version}-x86_64-apple-darwin.zip
+          # The same zip under a name that never changes, so the README can link to
+          # releases/latest/download/ directly. The in-app updater uses the versioned one.
+          cp macos/nte-history-exporter-gui-macos.zip nte-history-exporter-gui-macos.zip
 
       - name: Release
         env:
@@ -281,6 +284,7 @@ jobs:
             nte-history-exporter-macos
             nte-history-exporter-gui.exe
             nte-history-exporter-gui-linux
+            nte-history-exporter-gui-macos.zip
             nte-history-exporter-v${version}-x86_64-pc-windows-msvc.zip
             nte-history-exporter-v${version}-x86_64-unknown-linux-gnu.zip
             nte-history-exporter-v${version}-x86_64-apple-darwin.zip
