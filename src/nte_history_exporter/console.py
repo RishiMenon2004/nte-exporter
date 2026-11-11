@@ -8,7 +8,7 @@ from nte_history_exporter.decoder.server_region import SERVER_REGIONS
 from nte_history_exporter.live_capture.stop_key import wait_for_keypress
 
 WIDTH = 58
-REPOSITORY_URL = "https://github.com/Golumpa/nte-exporter"
+REPOSITORY_URL = "https://github.com/RishiMenon2004/nte-exporter"
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
@@ -65,7 +65,7 @@ def print_banner() -> None:
     print(style(f"  {GAME_NAME} history and achievements -> JSON", DIM))
     print(style(f"  {REPOSITORY_URL}", DIM))
     heart = "❤️" if (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "") == "utf8" else "<3"
-    print(style("  Created with ", DIM) + style(heart, RED) + style(" by Golumpa", DIM))
+    print(style("  Created with ", DIM) + style(heart, RED) + style(" by Golumpa, maintained by RishiMenon2004", DIM))
     print(rule("="))
 
 
@@ -181,6 +181,10 @@ def print_export_summary(name: str, decoded: int, exported: int, skipped: int) -
 def print_warning(code: str, reason: str, records: int | None = None) -> None:
     suffix = f" ({records} records)" if records is not None else ""
     print(style(f"  ! {code}: {reason}{suffix}", YELLOW))
+
+
+def print_blank() -> None:
+    print()
 
 
 def print_note(text: str) -> None:

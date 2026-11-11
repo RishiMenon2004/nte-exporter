@@ -15,7 +15,7 @@ decoder-only offsets.
   "capture_source": "npcap",
   "exporter": {
     "name": "nte-history-exporter",
-    "version": "0.3.4"
+    "version": "0.5.0"
   },
   "banner": {
     "id": "Lottery_Permanent",
@@ -106,6 +106,16 @@ If the game adds a genuinely new history pool, the exporter mappings need to be
 updated before tools can identify it cleanly. Reward display data also comes from
 the mapping files, so new rewards may export with stable IDs before they have
 nice names or ranks.
+
+## Boundary policy
+
+NTE history records do not appear to contain a unique server-side roll ID. UIDs are generated from decoded record fields and the record's order within all rows sharing the same raw timestamp.
+
+History always loads page 1 first and is scrolled downward, so the exporter anchors to the continuous run of pages starting at page 1 and ignores anything after the first gap (with a warning). This keeps the newest pages even if a later page is lost, and guarantees the newest timestamp group's ordinal 0 is captured.
+
+Within a timestamp group, ordinal 0 is the newest record and unseen rows can only append after the captured ones, so **every exported UID is stable** — including a partially captured oldest 10-pull. All decoded rows are therefore exported. Re-scanning later simply adds any rows that were not yet captured, with the same UIDs for the rows already seen.
+
+For Monopoly, Points Gift and Chase Reward rows stay in the timestamp group for UID ordinal generation, but only `result_type = dice` rows count toward pull-set sizing. Arc pulls are always 10-pulls. Mystery Box records are single pulls and the final page may contain fewer than five records. Every captured group is exported, including an incomplete oldest pull set, because its captured prefix is ordinal-stable.
 
 ## UID generation
 
@@ -206,7 +216,7 @@ mapping are not synthesized into the export.
   "capture_source": "npcap",
   "exporter": {
     "name": "nte-history-exporter",
-    "version": "0.3.4"
+    "version": "0.5.0"
   },
   "scan": {
     "in_game": {

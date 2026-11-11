@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>NTE History Exporter</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="titlebar">
+      <h1 data-text="title"></h1>
+      <span class="version" id="version"></span>
+      <span class="titlebar-spacer"></span>
+      <button class="update" id="update" type="button" hidden></button>
+    </header>
+
+    <main class="page">
+      <section class="panel settings">
+        <h2 data-text="settings"></h2>
+        <form class="settings-body" id="settings">
+          <fieldset class="field">
+            <legend data-text="backend"></legend>
+            <div class="segmented" id="backends"></div>
+            <p class="hint" data-text="backend_hint"></p>
+          </fieldset>
+
+          <div class="field">
+            <label for="user-uid" data-text="user_uid"></label>
+            <input id="user-uid" type="text" spellcheck="false" autocomplete="off" data-placeholder="user_uid_example" />
+            <p class="hint" data-text="user_uid_hint"></p>
+          </div>
+
+          <label class="switch">
+            <input id="copy-clipboard" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span data-text="copy_clipboard"></span>
+          </label>
+
+          <details class="advanced">
+            <summary data-text="advanced"></summary>
+            <div class="advanced-body">
+              <div class="field">
+                <label for="interface-ip" data-text="interface_ip"></label>
+                <input id="interface-ip" type="text" spellcheck="false" autocomplete="off" data-placeholder="interface_ip_example" />
+                <p class="hint" data-text="interface_ip_hint"></p>
+              </div>
+              <label class="switch">
+                <input id="debug" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"></span>
+                <span data-text="debug"></span>
+              </label>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button class="pill pill-primary" id="capture" type="submit" data-text="start"></button>
+            <button class="pill" id="open-exports" type="button" data-text="open_exports"></button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel captured">
+        <div class="panel-head">
+          <h2 data-text="captured"></h2>
+          <span class="panel-hint" data-text="open_in"></span>
+          <span id="trackers"></span>
+        </div>
+        <div class="well captured-well">
+          <div class="captured-head" aria-hidden="true">
+            <span data-text="col_banner"></span>
+            <span data-text="col_pages"></span>
+            <span data-text="col_status"></span>
+          </div>
+          <div class="captured-rows" id="rows"></div>
+          <p class="empty" id="rows-empty" data-text="captured_empty"></p>
+        </div>
+      </section>
+
+      <section class="panel activity">
+        <h2 data-text="activity"></h2>
+        <div class="well log" id="log" tabindex="0"></div>
+      </section>
+
+      <footer class="statusbar">
+        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        <span class="status-text" id="status" role="status"></span>
+        <span class="credit">
+          <span data-text="credit_before"></span><span class="heart" aria-hidden="true">♥</span><span data-text="credit_after"></span>
+        </span>
+      </footer>
+    </main>
+
+    <div class="scrim" id="dialog" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <h2 id="dialog-title"></h2>
+        <div class="dialog-body">
+          <p class="dialog-message" id="dialog-message"></p>
+          <div class="dialog-input" id="dialog-input"></div>
+          <div class="dialog-actions" id="dialog-actions"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,15 +1,25 @@
 [project]
 name = "nte-history-exporter"
-version = "0.3.4"
+version = "0.5.0"
 description = "Cross-platform Neverness to Everness pull-history and achievement exporter."
 requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-build = ["pyinstaller>=6.0"]
+build = ["pyinstaller>=6.0", "pillow"]
+gui = [
+    "pywebview>=6.2,<7",
+    "PyGObject>=3.50; sys_platform == 'linux'",
+]
 
 [project.scripts]
 nte-history-exporter = "nte_history_exporter.cli:main"
+
+[project.gui-scripts]
+nte-history-exporter-gui = "nte_history_exporter.gui.app:main"
+
+[tool.setuptools.package-data]
+"nte_history_exporter.gui" = ["web/*", "web/fonts/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

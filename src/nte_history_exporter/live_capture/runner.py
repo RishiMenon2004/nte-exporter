@@ -4,8 +4,10 @@ import json
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from nte_history_exporter import console
 from nte_history_exporter.constants import (
@@ -81,14 +83,22 @@ def run_live_capture(
     copy_clipboard: bool = False,
     write_debug_csv: bool = False,
     user_uid: str | None = None,
+    reporter=console,
+    stop_requested: Callable[[], bool] | None = None,
 ) -> dict:
+    """Capture live traffic until stopped, then write the exports.
+
+    ``reporter`` receives every progress message and prompt; it defaults to the
+    terminal ``console`` module and must provide the same functions. When
+    ``stop_requested`` is given it replaces the press-any-key stop monitor.
+    """
     local_ip = interface_ip or detect_local_ipv4()
     session = LiveHistorySession(local_ip)
 
     capture = open_capture_backend(local_ip, capture_backend)
-    console.print_live_instructions(local_ip, capture.name, capture.detail)
+    reporter.print_live_instructions(local_ip, capture.name, capture.detail)
     if capture.fallback_reason:
-        console.print_capture_fallback(capture.fallback_reason)
+        reporter.print_capture_fallback(capture.fallback_reason)
     reported_missing_pages: dict[str, tuple[int, ...]] = {}
     active_gap_notices: set[str] = set()
     tcp_segments: dict[tuple[str, int, str, int], list[tuple[int, bytes]]] = {}
@@ -96,9 +106,10 @@ def run_live_capture(
     captured_packets: list[UdpPacket] = []
 
     try:
-        with StopKeyMonitor() as stop_key:
+        with StopKeyMonitor() if stop_requested is None else nullcontext() as stop_key:
+            should_stop = stop_requested or stop_key.pressed
             for packet in capture.packets():
-                if stop_key.pressed():
+                if should_stop():
                     break
                 if packet is None:
                     continue
@@ -131,7 +142,7 @@ def run_live_capture(
                                     "playstation_"
                                 )
                             ]
-                            console.print_achievements_captured(
+                            reporter.print_achievements_captured(
                                 sum(record.completed for record in in_game),
                                 sum(record.status == "in_progress" for record in in_game),
                                 sum(record.completed for record in playstation),
@@ -164,7 +175,7 @@ def run_live_capture(
                             and (existing[7] if len(existing) > 7 else "permanent") == kind
                             for existing in session.pairs[:pair_count_before]
                         )
-                        console.print_page_captured(label, page, recaptured=was_replacement)
+                        reporter.print_page_captured(label, page, recaptured=was_replacement)
                         if kind not in affected_kinds:
                             affected_kinds.append(kind)
 
@@ -173,10 +184,10 @@ def run_live_capture(
                         missing_pages = tuple(session.missing_pages(kind))
                         previously_missing = reported_missing_pages.get(kind, ())
                         if missing_pages and kind not in active_gap_notices:
-                            console.print_missing_pages(label, list(missing_pages))
+                            reporter.print_missing_pages(label, list(missing_pages))
                             active_gap_notices.add(kind)
                         elif previously_missing and not missing_pages:
-                            console.print_page_gap_recovered(label)
+                            reporter.print_page_gap_recovered(label)
                             active_gap_notices.discard(kind)
                         reported_missing_pages[kind] = missing_pages
     finally:
@@ -197,7 +208,7 @@ def run_live_capture(
         write_payload_capture(payloads_path, captured_packets, local_ip, known_uids=uids)
     resolved_user_uid = user_uid or session.user_uid
     if (session.kinds_seen() or achievement_records) and not resolved_user_uid:
-        resolved_user_uid = console.prompt_user_uid()
+        resolved_user_uid = reporter.prompt_user_uid()
     if achievement_records:
         achievement_path = _achievement_path(resolved_user_uid)
         achievement_export = build_achievement_export_json(
@@ -213,7 +224,7 @@ def run_live_capture(
         )
     resolved_server_id = session.server_id
     if session.kinds_seen() and not resolved_server_id:
-        resolved_server_id = console.prompt_server_id()
+        resolved_server_id = reporter.prompt_server_id()
     capture_source = CAPTURE_SOURCE_LABELS.get(capture.name, capture.name)
     for kind in session.export_kinds():
         rows, warnings, pages_seen, pools = collect_export_rows(session, kind)
@@ -244,30 +255,30 @@ def run_live_capture(
             }
         )
 
-    console.print_results_header()
+    reporter.print_results_header()
     if stats:
-        console.print_capture_stats(
+        reporter.print_capture_stats(
             stats.received,
             stats.dropped,
             stats.interface_dropped,
         )
     if stats:
-        print()
+        reporter.print_blank()
 
     if not exports:
         if achievement_path is not None:
-            console.print_success("Achievement export complete.")
-            console.print_note("No pull history was captured (this is fine if you only wanted achievements).")
-            print()
-            console.print_note(f"Export written: {achievement_path}")
+            reporter.print_success("Achievement export complete.")
+            reporter.print_note("No pull history was captured (this is fine if you only wanted achievements).")
+            reporter.print_blank()
+            reporter.print_note(f"Export written: {achievement_path}")
         else:
-            console.print_problem("No history pages were captured.")
-            console.print_note("Reopen a supported history screen and scroll from page 1.")
-            console.print_note("If no page messages appear, return to the main menu and re-enter the game.")
+            reporter.print_problem("No history pages were captured.")
+            reporter.print_note("Reopen a supported history screen and scroll from page 1.")
+            reporter.print_note("If no page messages appear, return to the main menu and re-enter the game.")
         if diagnostics_path is not None:
-            console.print_note(f"Diagnostics written: {diagnostics_path}")
+            reporter.print_note(f"Diagnostics written: {diagnostics_path}")
         if payloads_path is not None:
-            console.print_note(f"Replay payloads written: {payloads_path}")
+            reporter.print_note(f"Replay payloads written: {payloads_path}")
         return {
             "exports": [],
             "diagnostics_path": diagnostics_path,
@@ -277,36 +288,36 @@ def run_live_capture(
 
     for item in exports:
         scan = item["export"]["scan"]
-        console.print_export_summary(
+        reporter.print_export_summary(
             item["export"]["banner"]["name"],
             scan["decoded_records"],
             scan["exported_records"],
             scan["skipped_records"],
         )
         for warning in scan["warnings"]:
-            console.print_warning(warning["code"], warning["reason"], warning.get("records"))
+            reporter.print_warning(warning["code"], warning["reason"], warning.get("records"))
 
-    print()
+    reporter.print_blank()
     for item in exports:
         if item["csv_path"] is not None:
-            console.print_note(f"CSV written: {item['csv_path']}")
-        console.print_note(f"Export written: {item['json_path']}")
+            reporter.print_note(f"CSV written: {item['csv_path']}")
+        reporter.print_note(f"Export written: {item['json_path']}")
     if achievement_path is not None:
-        print()
-        console.print_note(f"Export written: {achievement_path}")
+        reporter.print_blank()
+        reporter.print_note(f"Export written: {achievement_path}")
     if diagnostics_path is not None:
-        console.print_note(f"Diagnostics written: {diagnostics_path}")
+        reporter.print_note(f"Diagnostics written: {diagnostics_path}")
     if payloads_path is not None:
-        console.print_note(f"Replay payloads written: {payloads_path}")
+        reporter.print_note(f"Replay payloads written: {payloads_path}")
 
     if copy_clipboard and len(exports) == 1:
         if copy_to_clipboard(exports[0]["payload"]):
-            console.print_success("Export copied to clipboard - paste it straight into your tracker.")
+            reporter.print_success("Export copied to clipboard - paste it straight into your tracker.")
         else:
-            console.print_note("Clipboard tool unavailable; use the JSON file shown above.")
+            reporter.print_note("Clipboard tool unavailable; use the JSON file shown above.")
     elif copy_clipboard and len(exports) > 1:
-        console.print_note("Multiple banners captured; clipboard copy skipped so one export")
-        console.print_note("does not overwrite another.")
+        reporter.print_note("Multiple banners captured; clipboard copy skipped so one export")
+        reporter.print_note("does not overwrite another.")
     return {
         "exports": exports,
         "diagnostics_path": diagnostics_path,
