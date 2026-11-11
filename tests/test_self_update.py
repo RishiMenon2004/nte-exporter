@@ -114,6 +114,11 @@ class DownloadTests(unittest.TestCase):
 
 class InstallTests(unittest.TestCase):
     def setUp(self):
+        # These cover the plain-executable swap. On a real Mac install() would unzip
+        # the download as a .app with ditto, which these placeholder files aren't.
+        platform = patch.object(self_update.sys, "platform", "linux")
+        platform.start()
+        self.addCleanup(platform.stop)
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.target = Path(tmp.name) / "app.exe"
