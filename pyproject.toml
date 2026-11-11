@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-build = ["pyinstaller>=6.0"]
+build = ["pyinstaller>=6.0", "pillow"]
 gui = [
     "pywebview>=6.2,<7",
     "PyGObject>=3.50; sys_platform == 'linux'",

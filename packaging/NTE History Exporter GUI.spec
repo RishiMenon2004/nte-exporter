@@ -12,6 +12,10 @@ block_cipher = None
 root = Path(SPECPATH).parent
 version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 macos = sys.platform == "darwin"
+# packaging/icon.png, if present, becomes the app icon. PyInstaller converts it
+# to .ico or .icns with Pillow (in the "build" extra). Linux binaries have none.
+icon_path = root / "packaging" / "icon.png"
+icon = str(icon_path) if icon_path.exists() else None
 
 
 a = Analysis(
@@ -47,6 +51,7 @@ exe_options = dict(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=icon,
 )
 
 if macos:
@@ -66,7 +71,7 @@ if macos:
     app = BUNDLE(
         coll,
         name="NTE History Exporter.app",
-        icon=None,
+        icon=icon,
         bundle_identifier="io.github.rishimenon2004.nte-history-exporter",
         version=version,
         info_plist={

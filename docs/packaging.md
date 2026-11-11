@@ -48,6 +48,11 @@ not bundled; each platform uses its system one (see [gui.md](gui.md)).
 
 See [gui.md](gui.md) for runtime permissions on each platform.
 
+Both specs use `packaging/icon.png` as the app icon when it exists. Make it
+square, ideally 1024x1024. PyInstaller converts it to `.ico` on Windows and
+`.icns` on macOS, which needs Pillow (part of the `build` extra). Linux
+binaries can't carry an icon, so the Linux builds don't have one.
+
 ## Packet capture runtime
 
 Windows live capture defaults to `--capture-backend auto`, which tries an installed system Npcap runtime first, then the built-in raw-socket backend. If `--capture-backend libpcap` is specified, raw fallback is disabled. If `--capture-backend raw` is specified, only the Windows raw-socket backend is used.
