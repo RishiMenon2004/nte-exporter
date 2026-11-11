@@ -4,318 +4,120 @@
 
 # NTE History Exporter
 
-Prototype CLI exporter for **Neverness to Everness** pull history and achievements — decodes your own game traffic into sanitized JSON.
+Export your **Neverness to Everness** pull history and achievements, and import
+them into a tracker.
 
-![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078D6)
 ![Status](https://img.shields.io/badge/status-prototype-orange)
 
 </div>
 
-## Supported Banners
-
-| System   | Banner                  | Banner ID                  | Pity pool  |
-| -------- | ----------------------- | -------------------------- | ---------- |
-| Monopoly | Standard Board          | `Lottery_Permanent`        | Per-banner |
-| Monopoly | Limited Character Board | `Lottery_LimitedCharacter` | Shared     |
-| Gashapon | Arc Miracle Box         | `Arc_MiracleBox`           | Shared     |
-| Gashapon | Mystery Box             | `Gashapon_MysteryBox`      | Per-rotation |
-
-## What It Does
-
-The exporter decodes Permanent Board, Limited Character Board, Arc Miracle Box,
-and Mystery Box history pages from captured UDP data. It also captures tracked
-achievements during login, including completed and in-progress records. Pull
-history is written as tracker-ready JSON and achievements use a separate
-versioned JSON format.
-
-> [!NOTE]
-> Export JSON contains decoded history or achievement records and the shareable
-> NTE user UID when it can be detected. It does **not** export tokens, account
-> IDs, role IDs, device IDs, server IPs, raw packets, cookies, session data, or
-> other capture metadata.
-
-## Requirements
-
-- Python 3.10 or newer when running from source. Release binaries include the Python runtime.
-- Packet-capture permission. On Windows, Npcap can usually capture without running this tool as Administrator; the raw-socket fallback may need Administrator. On Linux and macOS, use root or capture capabilities as required by your system.
-- **Windows:** [Npcap](https://npcap.com/) is recommended. Install it normally; WinPcap API-compatible mode is not required. If Npcap is unavailable or cannot be initialized, `auto` falls back to the Windows built-in raw-socket backend.
-- **Linux:** install the system **libpcap** runtime if it is not already present. Package names commonly include `libpcap0.8` on Debian/Ubuntu and `libpcap` on Fedora, Arch, and similar distributions.
-- **macOS:** the system normally includes **libpcap**, so no separate Npcap installation is needed.
-
-Npcap is Windows-only and is not bundled with this project. Linux and macOS use libpcap, the cross-platform capture library on which Npcap is based.
-
-## Downloads
-
-Compiled builds are published on the [GitHub Releases page](https://github.com/RishiMenon2004/nte-exporter/releases).
-
-| Platform | Command line | Desktop GUI (preview) |
-| -------- | ------------ | --------------------- |
-| Windows | `nte-history-exporter.exe` | `nte-history-exporter-gui.exe` |
-| Linux | `nte-history-exporter-linux` | `nte-history-exporter-gui-linux` |
-| macOS | `nte-history-exporter-macos` | `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip` (contains `NTE History Exporter.app`) |
-
-Each platform also has a versioned `nte-history-exporter-v<version>-….zip`. The
-Windows and Linux zips contain both the command-line and GUI builds. See
-[docs/gui.md](docs/gui.md#downloaded-builds) for how to start the GUI on each
-platform.
-
-The Windows executable is a single console app. Start it from a terminal:
-
-```powershell
-.\nte-history-exporter.exe
-```
-
-On Linux and macOS, make the downloaded binary executable before running it. Use `sudo` only when your system requires elevated capture permission:
-
-```bash
-chmod +x ./nte-history-exporter-linux
-sudo ./nte-history-exporter-linux
-```
-
-Use `nte-history-exporter-macos` in the same way on macOS. If your browser or OS blocks a downloaded macOS binary, allow it from the system security prompt before running it again.
-
-## Usage
-
-### Live capture
-
-The default `auto` capture backend uses:
-
-- **Windows:** Npcap when installed, with automatic fallback to the built-in Windows raw-socket backend.
-- **Linux/macOS:** the system libpcap library.
-
-Use `--capture-backend libpcap` to require Npcap/libpcap without fallback, or `--capture-backend raw` to require the Windows raw-socket backend.
-
-#### Windows
-
-Downloaded executable:
-
-```powershell
-.\nte-history-exporter.exe
-```
-
-From source:
-
-```powershell
-.\run-exporter.ps1
-```
-
-Or simply double-click **`run-exporter.cmd`**.
-
-#### Desktop GUI (preview)
-
-The GUI is a pywebview window around the same live capture. Pick the backend,
-click **Start capture**, and watch pages arrive for each banner. Then click
-**Stop & export**.
+The exporter reads the game's own network traffic while you scroll through your
+history boards in game, and saves what it sees as JSON files that trackers can
+import. It never logs in to your account or changes anything in the game.
 
 <div align="center">
-  <img src="docs/images/gui-demo.png" width="560" alt="Desktop GUI during a capture" />
+  <img src="docs/images/gui-demo.png" width="560" alt="The exporter during a capture" />
 </div>
 
-Interface IP and debug files are under **Advanced**, since they're rarely needed.
+## Supported banners
 
-Download it from Releases (see [Downloads](#downloads)), or run it from source by
-double-clicking **`run-exporter-gui.cmd`**. From source it needs
-`pip install -e ".[gui]"` first. See [docs/gui.md](docs/gui.md) for per-platform
-setup and customization.
+| Banner | Kind |
+| ------ | ---- |
+| Standard Board | Monopoly |
+| Limited Character Board | Monopoly |
+| Arc Miracle Box | Gashapon |
+| Mystery Box | Gashapon |
 
-##### Importing into a tracker
+Achievements are exported too, both completed and in progress.
 
-After a capture, **Chiz.Pink** sends the exports straight to Chiz.Pink and opens
+## Getting started
+
+Download the exporter for your system from the
+[Releases page](https://github.com/RishiMenon2004/nte-exporter/releases):
+
+| System | Download |
+| ------ | -------- |
+| Windows | `nte-history-exporter-gui.exe` |
+| Linux | `nte-history-exporter-gui-linux` |
+| macOS | `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip` |
+
+On Windows, install [Npcap](https://npcap.com/) first with its default options.
+Then double-click the exe. It isn't code-signed, so Windows may warn you the
+first time; choose **More info**, then **Run anyway**. Without Npcap it still
+works, but you'll need to run it as administrator.
+
+Linux and macOS need a little setup to allow capturing. See
+[Running the downloaded builds](docs/gui.md#downloaded-builds) for the steps.
+
+## Capturing your history
+
+Start the exporter **before you press Start on the game's main menu**. Your
+achievements, user UID and server are only sent while you log in. If you're
+already in game, pull history still works, but you'll need to return to the main
+menu and log in again for achievements.
+
+Click **Start capture**, then open each history board in game and scroll down
+through every page, starting from page 1. Pages appear in the exporter as they
+arrive. When you're done, click **Stop & export**.
+
+If a page is missed, the exporter tells you which one. Close and reopen that
+history board in game and scroll down again; scrolling back up won't resend it.
+
+It's worth scrolling one page further than you need. If you only want pages 1 to
+5, scroll to page 6 as well.
+
+## Importing into a tracker
+
+After a capture, clicking **Chiz.Pink** sends the exports straight to Chiz.Pink and opens
 its import page, so there are no files to drag. Mystery Box exports aren't sent,
 because Chiz.Pink doesn't track them.
 
-**NTEWiz** opens the site with the exports folder alongside it, ready to drag the
+But clicking **NTEWiz** opens the site with the exports folder alongside it, ready to drag the
 files in. Chiz.Pink does the same if there's no capture yet or sending fails.
 
-##### Updates
+Any other tracker that takes this format can import the files from the exports
+folder. Each banner and your achievements are saved as separate files.
 
-When a newer release is out, a pill appears in the title bar. In a downloaded
-build, clicking it downloads the update, checks it against GitHub's checksum,
-then replaces the GUI and restarts it.
+## Updates
 
-Run from source, the pill opens the release page instead.
-
-> [!IMPORTANT]
-> Start the exporter **before pressing Start on the game's main menu**. This is
-> required for achievement capture and enables automatic user UID and
-> account-server detection. If already in game, pull-history capture still
-> works, but achievements require returning to the main menu and logging in
-> again; missing account details are requested before saving.
-
-Once running, open any supported history board in game. The tool keeps listening until you press any key. After it prints and saves the results, press any key again to close the exporter. Exports are written under `exports\` as:
-
-- `<user_uid>_Permanent_<date_time>.json`
-- `<user_uid>_Limited_<date_time>.json`
-- `<user_uid>_Arc_<date_time>.json`
-- `<user_uid>_MysteryBox_<date_time>.json`
-- `<user_uid>_Achievements_<date_time>.json`
-
-If the user UID is not detected automatically, the console asks for it before saving. Leaving it blank saves as `unknown_<banner>_<date_time>.json`, but may prevent import on some trackers.
-
-The export also includes `server_id` and `account_region` when known. If the
-initial TCP server-selection response was missed, the console offers Asia,
-America, Europe, and SEA as a numbered choice. The prompt can be left blank to
-omit server information.
-
-Exports are not copied to the clipboard by default. Add `--copy-clipboard` to copy a single captured banner's JSON after saving. If multiple banners are captured in the same run, clipboard copy is skipped so one banner does not overwrite another.
-
-If a page response is missed, the exporter reports the missing page number while capture is still running. Leave the exporter open, close and reopen that history board, then scroll down again. Scrolling backward within the existing view does not request the cached pages again. The replacement capture is accepted and the tool confirms when the gap has been recovered. If reopening the board still produces no page messages, return to the main menu and re-enter the game to start a fresh connection.
-
-### Achievement export
-
-Start the live exporter before pressing Start on the game's main menu. The
-tracked achievement state is loaded during login, captured automatically, and written to
-`exports/<user_uid>_Achievements_*.json` as a versioned achievement export with
-account metadata, completion totals, and records grouped by achievement category.
-Both completed and in-progress achievements are included with their current
-progress, status, and completion time when available. Generated metadata adds
-the localized title and description, target, quality, and rewards from the
-current `NTE_Assets` achievement table. Newly captured IDs that are not yet in
-the bundled mapping still export normally; only their optional display metadata
-is omitted until the mappings are refreshed.
-PlayStation trophy entries are retained and identified separately
-even though they are not shown in the in-game achievement list. The console
-reports completed and in-progress totals for in-game and PlayStation records as
-soon as the list has been decoded. Every observed record without a completion
-timestamp is classified as `in_progress`, even when its numeric progress is
-zero; compound achievements can track hidden checklist progress this way.
-
-#### Linux/macOS
-
-Downloaded executable, using `sudo` when your system requires elevated capture permission:
-
-```bash
-chmod +x ./nte-history-exporter-linux
-sudo ./nte-history-exporter-linux
-```
-
-From source, install the project and ensure the system libpcap runtime is available:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
-sudo .venv/bin/nte-history-exporter
-```
-
-macOS normally includes libpcap. On Linux, install the distribution's libpcap runtime package if it is not already present. Capture can also be granted through platform-specific capabilities instead of running the whole exporter with `sudo`.
-
-### File replay and offline research
-
-#### mitmproxy flows
-
-Downloaded executable:
-
-```powershell
-.\nte-history-exporter.exe capture.flows
-```
-
-From source:
-
-```powershell
-.\run-exporter.ps1 capture.flows
-```
-
-Decodes a `mitmproxy .flows` capture instead of listening live — used for research and testing.
-
-#### Captured UDP payloads
-
-Replay any sanitized UDP payload capture (`Capture_*.payloads.json` or `capture.json`) through the decoder offline without running the game:
-
-```powershell
-python tools/replay_payloads.py exports/Capture_*.payloads.json [--debug]
-```
-
-You can also record raw UDP history traffic directly into a replayable JSON file using:
-
-```powershell
-python tools/capture_payloads.py [--out exports/capture.json]
-```
-
-### Options
-
-| Flag      | Effect                                              |
-| --------- | --------------------------------------------------- |
-| `--live`  | Capture live traffic, including achievements loaded at login. |
-| `--debug` | Also write the research CSV, privacy-safe capture diagnostics, and sanitized replay payloads. |
-| `--user-uid <uid>` | Override the auto-detected NTE user UID in the JSON export. |
-| `--copy-clipboard` | Copy a single live export JSON to clipboard after saving. |
-
-Advanced live-capture selection:
-
-```text
---capture-backend auto      Prefer Npcap/libpcap; fall back to raw sockets on Windows
---capture-backend libpcap   Require Npcap on Windows or libpcap on Linux/macOS
---capture-backend raw       Require the Windows raw-socket backend
-```
-
-The `--debug` flag writes three sidecars under `exports/`:
-1. **Research CSV** (`<uid>_<banner>_<timestamp>.csv`): decoded research fields and raw captured records.
-2. **Capture diagnostics** (`Capture_*.diagnostics.json`): shareable reason codes and packet counts without payloads, network addresses, ports, timestamps, or user UIDs.
-3. **Sanitized replay payloads** (`Capture_*.payloads.json`): sanitized UDP packet payloads scrubbed of real IPs, ports, and user UIDs, ready for offline debugging and regression tests with `tools/replay_payloads.py`. See [Capture diagnostics](docs/capture-diagnostics.md).
-
-The exporter automatically includes the shareable NTE user UID when it appears in the capture. If a short capture does not include it, the console asks before saving; you can also pass it explicitly with `--user-uid`.
-
-> [!TIP]
-> For reliable deduplication, start from page 1 and scroll through the pages. If you only want pages 1–5, scroll through to page 6 as well just to be on the safe side.
-
-## Mapping maintenance
-
-Reward and achievement metadata can be rebuilt directly from the latest
-NTE_Assets tables and English translation files. Mapping snapshots may change
-IDs while UID inputs remain untouched:
-
-Run **Update mappings** from the GitHub Actions tab to generate and test
-the snapshot in a reviewable pull request, or run it locally:
-
-```powershell
-python tools/update_mappings.py
-```
-
-This rebuilds reviewable mapping candidates directly from NTE_Assets under
-`build/mapping-update/`; committed mappings are untouched unless `--apply` is
-explicitly supplied. The snapshot may include additions, updates, and removals,
-while pool mappings and UID inputs remain untouched. See
-[Mapping updates](docs/mapping-updates.md) for the source rules and
-review workflow.
+When a newer release is out, a pill appears in the title bar. Clicking it
+downloads the update, checks it against GitHub's checksum, then replaces the
+exporter and restarts it.
 
 ## Privacy
 
-> [!CAUTION]
-> Sanitized exports are intended for tracker import and should not contain anything especially harmful, but they can identify the game account via user UID and pull history. Share exports only with verified sources, such as known trackers. Do not commit packet captures, generated exports, research briefs, or personal account data. The repository keeps `exports/` as an empty output folder but ignores everything generated inside it.
+The exports contain your pull history, your achievements and your NTE user UID.
+They don't contain passwords, tokens, account or device IDs, IP addresses, or raw
+network data. They can still identify your game account, so only share them with
+trackers you trust.
 
-When the GUI sends a capture to Chiz.Pink, the exports are encrypted on your
-computer first. The key is only in the link that opens in your browser, which
-never sends that part to a server. Chiz.Pink holds the encrypted copy until your
-browser collects it, or for up to 10 minutes, then deletes it.
+When you send a capture to Chiz.Pink, the exports are encrypted on your computer
+first. The key is only in the link that opens in your browser, which never sends
+that part to a server. Chiz.Pink holds the encrypted copy until your browser
+collects it, or for up to 10 minutes, then deletes it.
 
-## Boundary Policy
+## Command line
 
-NTE history records do not appear to contain a unique server-side roll ID. UIDs are generated from decoded record fields and the record's order within all rows sharing the same raw timestamp.
+There's also a command-line version, which runs the same capture in a terminal
+and can replay saved captures. See [Command-line usage](docs/cli.md).
 
-History always loads page 1 first and is scrolled downward, so the exporter anchors to the continuous run of pages starting at page 1 and ignores anything after the first gap (with a warning). This keeps the newest pages even if a later page is lost, and guarantees the newest timestamp group's ordinal 0 is captured.
+## For developers
 
-Within a timestamp group, ordinal 0 is the newest record and unseen rows can only append after the captured ones, so **every exported UID is stable** — including a partially captured oldest 10-pull. All decoded rows are therefore exported. Re-scanning later simply adds any rows that were not yet captured, with the same UIDs for the rows already seen.
+| Guide | What it covers |
+| ----- | -------------- |
+| [Export format](docs/export-format.md) | The JSON files, pull IDs and achievement exports, for trackers importing them |
+| [Direct import](docs/direct-import.md) | Letting the exporter send captures straight to your tracker |
+| [Desktop GUI](docs/gui.md) | Running from source, how the app fits together, and customizing it |
+| [Packaging](docs/packaging.md) | Building the executables |
+| [Mapping updates](docs/mapping-updates.md) | Refreshing reward and achievement names from game data |
+| [Capture diagnostics](docs/capture-diagnostics.md) | Debug output and replaying captures offline |
+| [Packet format](docs/packet-format.md) | Notes on the decoded game traffic |
+| [Limitations](docs/limitations.md) | What isn't supported yet |
 
-For Monopoly, Points Gift and Chase Reward rows stay in the timestamp group for UID ordinal generation, but only `result_type = dice` rows count toward pull-set sizing. Arc pulls are always 10-pulls. Mystery Box records are single pulls and the final page may contain fewer than five records. Every captured group is exported, including an incomplete oldest pull set, because its captured prefix is ordinal-stable.
+Run from source with Python 3.10 or newer: `pip install -e ".[gui]"`, then
+double-click `run-exporter-gui.cmd` on Windows or run
+`python -m nte_history_exporter.gui`.
 
-## Adapters
-
-**Current**
-
-- Live Npcap/libpcap capture on Windows, Linux, and macOS
-- Live Windows raw-socket fallback
-- Sanitized UDP payload capture and offline replay (`tools/capture_payloads.py`, `tools/replay_payloads.py`)
-- `mitmproxy .flows` research decoder
-- pywebview desktop GUI for Windows, Linux, and macOS (preview, see [docs/gui.md](docs/gui.md))
-
-**Planned**
-
-- Optional pktmon diagnostics for capture-drop investigation
-
-## Example Run
-
-<div align="center">
-  <img src="docs/images/cli-demo.png" width="480" alt="Live capture session: instructions, captured pages, and the results summary" />
-</div>
+Don't commit packet captures, exports or personal account data. The `exports/`
+folder is kept empty, and everything generated inside it is ignored.

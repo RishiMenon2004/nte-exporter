@@ -1,33 +1,20 @@
 # Limitations
 
-This is a prototype and supports `Lottery_Permanent`, `Lottery_LimitedCharacter`, `Arc_MiracleBox`, and `Gashapon_MysteryBox`.
+This is a prototype. It supports the four banners listed in the
+[README](../README.md#supported-banners).
 
-Known limitations:
-
-- Other NTE banners are not implemented yet.
-- Mystery Box history does not expose a semantic rotation ID in each decoded row. The exporter deliberately keeps one unsplit history stream and leaves rotation grouping to consumers.
-- The game appears not to provide a unique server-side roll ID in the decoded record body.
-- UIDs are generated deterministically from decoded fields and timestamp-group order.
-- A partially captured oldest timestamp group is still exported; its captured prefix has stable UIDs, and a later deeper scan adds the rest with the same UIDs.
-- Pages are anchored to the continuous run starting at page 1. Live capture reports gaps immediately and accepts replacement pages from another pass while the exporter remains open. Scrolling backward does not request cached pages again, so close and reopen the history board before rescanning. Any gap left when capture ends causes later pages to be ignored and reported as warnings.
-- Pipelined page requests and multi-page responses are supported, including observed 10-record responses containing two consecutive Monopoly pages. Non-byte-aligned response payloads are realigned before decoding.
-- Structured Monopoly and Arc blocks are parsed in enrichment/fallback mode.
-  The existing decoder remains authoritative when structured rows do not agree
-  on record count, reward ID, and timestamp.
-- Structured snapshot/segment assembly is limited to runs where every decoded
-  row came from structured fallback. Existing primary-decoder runs are never
-  reordered. Ambiguous generations retain the last proven snapshot.
-- Live capture prefers Npcap on Windows and automatically falls back to the built-in raw-socket backend if Npcap is unavailable. Linux and macOS require the system libpcap runtime.
-- The file adapter reads mitmproxy `.flows` captures for research and testing.
-- Npcap is Windows-only and is not redistributed with this project; Linux and macOS use their system libpcap.
-- Reward keys decode to their reward id string, so unknown rewards still export a usable `reward_id`; display names/ranks come from the mapping JSON files and should be expanded as new rewards appear.
-- Achievement exports contain only records observed in the login response.
-  Asset-only definitions are not synthesized because absence cannot distinguish
-  unstarted, locked, or unavailable content. Unknown captured achievement IDs
-  still export without optional display metadata.
-- Observed achievements have only `completed` and `in_progress` states. Some
-  compound achievements expose numeric progress `0` while the server tracks
-  hidden checklist progress, so every observed record without completion ticks
-  is classified as `in_progress`.
-
-Privacy guardrail: raw packet data must not be included in sanitized exports.
+- Mystery Box history does not expose a rotation ID in each decoded row. The
+  exporter deliberately keeps one unsplit history stream and leaves rotation
+  grouping to consumers.
+- Pages are anchored to the continuous run starting at page 1. If a missed page
+  hasn't been recaptured by the time capture ends, every page after it is ignored
+  and reported as a warning.
+- Unknown rewards still export with a usable `reward_id`, but their display name
+  and rank come from the mapping files, so they're missing until the mappings are
+  updated.
+- Achievement exports contain only the records sent during login. Achievements
+  the game doesn't send aren't added from the game data, because a missing one
+  could be unstarted, locked, or unavailable. Observed records are either
+  `completed` or `in_progress`. Some compound achievements report progress `0`
+  while the server tracks hidden checklist progress, so every record without a
+  completion time is `in_progress`.
