@@ -54,7 +54,8 @@ not bundled; each platform uses its system one (see [gui.md](gui.md)).
 
 See [gui.md](gui.md) for runtime permissions on each platform.
 
-Both specs use `packaging/icon.png` as the app icon when it exists. Make it
+The GUI spec uses `packaging/icon.png` as its icon, and the CLI spec uses
+`packaging/icon_cli.png`, falling back to `icon.png` without it. Make them
 square, ideally 1024x1024. PyInstaller converts it to `.ico` on Windows and
 `.icns` on macOS, which needs Pillow (part of the `build` extra). Linux
 binaries can't carry an icon, so the Linux builds don't have one.

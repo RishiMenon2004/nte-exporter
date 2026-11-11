@@ -5,10 +5,14 @@ from pathlib import Path
 
 block_cipher = None
 root = Path(SPECPATH).parent
-# packaging/icon.png, if present, becomes the app icon. PyInstaller converts it
-# to .ico or .icns with Pillow (in the "build" extra). Linux binaries have none.
-icon_path = root / "packaging" / "icon.png"
-icon = str(icon_path) if icon_path.exists() else None
+# packaging/icon_cli.png becomes the icon, or packaging/icon.png if it's missing.
+# PyInstaller converts it to .ico or .icns with Pillow (in the "build" extra).
+# Linux binaries have none.
+icon_path = next(
+    (path for path in (root / "packaging" / "icon_cli.png", root / "packaging" / "icon.png") if path.exists()),
+    None,
+)
+icon = str(icon_path) if icon_path else None
 
 
 a = Analysis(
