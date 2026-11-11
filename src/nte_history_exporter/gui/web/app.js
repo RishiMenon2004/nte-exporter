@@ -168,11 +168,12 @@ async function copyToClipboard(text) {
   }
 }
 
-// Import drops --------------------------------------------------------------
+// Direct import -------------------------------------------------------------
 
-// Protocol v1: the exports are gzipped, encrypted with AES-256-GCM and POSTed as
-// { version: 1, ciphertext, iv }; the site answers { dropId }. The key stays on this machine
-// until it is put after the # of the link, which browsers never send to a server.
+// Protocol v1, described in docs/direct-import.md. The exports are gzipped, encrypted
+// with AES-256-GCM and POSTed as { version: 1, ciphertext, iv }; the site answers
+// { dropId }. The key stays on this machine until it is put after the # of the link,
+// which browsers never send to a server.
 
 const DROP_TIMEOUT_MS = 20000;
 

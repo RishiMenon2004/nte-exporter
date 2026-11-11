@@ -37,7 +37,7 @@ TEXT = theme.TEXT
 
 
 def drop_plaintext(payloads: list[str], skip_banners: tuple[str, ...] = ()) -> str | None:
-    """Group a capture's exports into the document a tracker import drop carries.
+    """Group a capture's exports into the document a direct import drop carries.
 
     Returns None if the site takes none of them.
     """

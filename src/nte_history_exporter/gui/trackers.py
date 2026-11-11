@@ -1,7 +1,7 @@
 """The tracker sites offered as buttons in the Captured header.
 
 The page only passes a site's key, so it can't open anything not listed here. A
-site with "drop" can receive a capture directly; see docs/gui.md.
+site with "drop" can receive a capture directly; see docs/direct-import.md.
 """
 
 from __future__ import annotations
