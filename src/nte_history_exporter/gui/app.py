@@ -10,6 +10,7 @@ import time
 import traceback
 import webbrowser
 from pathlib import Path
+from typing import NoReturn
 
 from nte_history_exporter.constants import EXPORTER_VERSION
 from nte_history_exporter.decoder.server_region import SERVER_REGIONS
@@ -542,7 +543,23 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         _show_startup_error(exc)
         return 1
-    return 0
+    _exit_now(0)
+
+
+def _exit_now(code: int) -> NoReturn:
+    """End the process once the window is gone, without waiting for other threads.
+
+    pywebview answers each call from the page on its own non-daemon thread. On GTK
+    and macOS, one still sending its result to the closed page waits forever, which
+    would leave the app running in the background after its window closed.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream:
+                stream.flush()
+        except Exception:
+            pass
+    os._exit(code)
 
 
 def _use_writable_working_dir() -> None:
@@ -606,7 +623,7 @@ def _smoke_test() -> int:
         say("starting webview")
         webview.start(wait_for_page, **_start_options())
         say("webview stopped")
-        return 0 if outcome == [True] else 1
+        _exit_now(0 if outcome == [True] else 1)
     except Exception:
         traceback.print_exc()
         return 1
