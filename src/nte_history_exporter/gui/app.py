@@ -573,6 +573,18 @@ def _smoke_test() -> int:
     build has no console and shows a blocking dialog on an uncaught error, so
     failures are turned into exit code 1 instead.
     """
+    def say(message: str) -> None:
+        # Shows in CI logs; a windowed Windows build has no stderr and prints nothing.
+        print(f"smoke test: {message}", file=sys.stderr, flush=True)
+
+    def give_up() -> None:
+        say("still running, giving up")
+        os._exit(1)
+
+    # A webview that never closes would otherwise keep the build waiting forever.
+    watchdog = threading.Timer(SMOKE_TIMEOUT_SECONDS + 30, give_up)
+    watchdog.daemon = True
+    watchdog.start()
     try:
         import webview
 
@@ -581,15 +593,19 @@ def _smoke_test() -> int:
         outcome: list[bool] = []
 
         def wait_for_page() -> None:
-            outcome.append(bridge._ready.wait(SMOKE_TIMEOUT_SECONDS))
+            ready = bridge._ready.wait(SMOKE_TIMEOUT_SECONDS)
+            outcome.append(ready)
+            say("page is ready" if ready else f"page not ready after {SMOKE_TIMEOUT_SECONDS}s")
             try:
                 window.destroy()
+                say("window closing")
             except Exception:
-                # Otherwise the window stays open and the build waits on it forever.
                 traceback.print_exc()
                 os._exit(1)
 
+        say("starting webview")
         webview.start(wait_for_page, **_start_options())
+        say("webview stopped")
         return 0 if outcome == [True] else 1
     except Exception:
         traceback.print_exc()
