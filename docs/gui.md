@@ -20,7 +20,7 @@ CLI, which is where the platforms differ. The window also needs a webview:
 | Linux | WebKitGTK (`libwebkit2gtk-4.1`) from your distribution. |
 | macOS | WKWebView, part of the system. |
 
-**Windows**: `nte-history-exporter-gui.exe`
+**Windows**: [nte-history-exporter-gui.exe](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui.exe)
 
 - Double-click it. With [Npcap](https://npcap.com/) installed, no
   Administrator rights are needed.
@@ -30,7 +30,7 @@ CLI, which is where the platforms differ. The window also needs a webview:
   **More info → Run anyway**.
 - Exports are written to `exports\` next to the exe.
 
-**Linux**: `nte-history-exporter-gui-linux`
+**Linux**: [nte-history-exporter-gui-linux](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui-linux)
 
 ```bash
 chmod +x ./nte-history-exporter-gui-linux
@@ -51,7 +51,7 @@ with `sudo -E ./nte-history-exporter-gui-linux` on an X11 session instead.
 Exports go to `exports/` in the folder you started it from. If that folder
 isn't writable, they go to `~/NTE History Exporter/exports/`.
 
-**macOS**: `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip`
+**macOS**: `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip` from the [latest release](https://github.com/RishiMenon2004/nte-exporter/releases/latest)
 
 - Unzip it and move **NTE History Exporter.app** to Applications.
 - The app isn't signed or notarized, so the first launch is blocked. Right-click
