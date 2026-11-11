@@ -13,6 +13,8 @@
   "fork_DemonBlade": {"name": "Ravenous Blade", "rank": "S"},
   "fork_Door": {"name": "The Wrong Gate", "rank": "S"},
   "fork_dustbin": {"name": "Dangerous Game", "rank": "B"},
+  "fork_elyms": {"name": "Echoes on Hold", "rank": "S"},
+  "fork_exe": {"name": "Dotted Horizon", "rank": "S"},
   "fork_GoldRecord": {"name": "Voice of the Voyager", "rank": "S"},
   "fork_GoldWool": {"name": "What's Desired", "rank": "S"},
   "fork_jiaojuan": {"name": "Shiny Days", "rank": "A"},
