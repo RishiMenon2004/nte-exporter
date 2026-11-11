@@ -42,6 +42,12 @@ A windowed build has no console to print `--help` to, so it accepts
 over 60 seconds. Run it with `start /wait` on Windows (see
 `build-windows.cmd`) or under `xvfb-run` on a headless Linux machine.
 
+On Linux, besides the packages in [gui.md](gui.md#from-source), the build needs
+the `GIRepository` 3.0 typelib (`gir1.2-girepository-3.0` on Ubuntu).
+PyInstaller's GTK hooks use it to find what to bundle. Without it they only
+print `Namespace GIRepository not available` warnings, and the build hangs when
+its window closes.
+
 The page itself (`gui/web/`) is added to the bundle by the spec's `datas`, and
 pywebview's own PyInstaller hook collects its libraries. The webview engine is
 not bundled; each platform uses its system one (see [gui.md](gui.md)).

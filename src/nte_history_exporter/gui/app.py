@@ -582,7 +582,12 @@ def _smoke_test() -> int:
 
         def wait_for_page() -> None:
             outcome.append(bridge._ready.wait(SMOKE_TIMEOUT_SECONDS))
-            window.destroy()
+            try:
+                window.destroy()
+            except Exception:
+                # Otherwise the window stays open and the build waits on it forever.
+                traceback.print_exc()
+                os._exit(1)
 
         webview.start(wait_for_page, **_start_options())
         return 0 if outcome == [True] else 1
