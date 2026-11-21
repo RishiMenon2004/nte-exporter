@@ -51,7 +51,7 @@ with `sudo -E ./nte-history-exporter-gui-linux` on an X11 session instead.
 Exports go to `exports/` in the folder you started it from. If that folder
 isn't writable, they go to `~/NTE History Exporter/exports/`.
 
-**macOS**: `nte-history-exporter-gui-v<version>-x86_64-apple-darwin.zip` from the [latest release](https://github.com/RishiMenon2004/nte-exporter/releases/latest)
+**macOS**: [nte-history-exporter-gui-macos.zip](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui-macos.zip)
 
 - Unzip it and move **NTE History Exporter.app** to Applications.
 - The app isn't signed or notarized, so the first launch is blocked. Right-click
