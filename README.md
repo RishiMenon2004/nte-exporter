@@ -35,13 +35,13 @@ Achievements are exported too, both completed and in progress.
 
 Download the latest exporter for your system:
 
-| System | Download |
-| ------ | -------- |
-| Windows | [nte-history-exporter-gui.exe](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui.exe) |
-| Linux | [nte-history-exporter-gui-linux](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui-linux) |
-| macOS | [nte-history-exporter-gui-macos.zip](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui-macos.zip) |
+| System | GUI | CLI |
+| ------ | --- | --- |
+| Windows | [nte-history-exporter-gui.exe](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui.exe) | [nte-history-exporter.exe](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter.exe) |
+| Linux | [nte-history-exporter-gui-linux](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui-linux) | [nte-history-exporter-linux](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-linux) |
+| macOS | [nte-history-exporter-gui-macos.zip](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-gui-macos.zip) | [nte-history-exporter-macos](https://github.com/RishiMenon2004/nte-exporter/releases/latest/download/nte-history-exporter-macos) |
 
-Older versions and the command-line builds are on the
+Older versions are on the
 [Releases page](https://github.com/RishiMenon2004/nte-exporter/releases).
 
 On Windows, install [Npcap](https://npcap.com/) first with its default options.
