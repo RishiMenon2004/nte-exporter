@@ -279,6 +279,25 @@ class BridgeTests(unittest.TestCase):
         self.ops(("finished", {"exports": [mystery], "achievement_path": None}))
         self.assertIsNone(self.bridge.import_drop("chiz_pink"))
 
+    def test_disabled_tracker_shows_message_instead_of_opening(self):
+        boot_trackers = {site["key"]: site for site in self.bridge.bootstrap()["trackers"]}
+        self.assertEqual(boot_trackers["ntewiz"]["disabled"], trackers.SITES["ntewiz"]["disabled"])
+        self.assertIsNone(boot_trackers["chiz_pink"]["disabled"])
+
+        with (
+            patch("nte_history_exporter.gui.app.webbrowser.open") as browser,
+            patch.object(self.bridge, "open_exports") as folder,
+        ):
+            self.bridge.open_tracker("ntewiz")
+
+        browser.assert_not_called()
+        folder.assert_not_called()
+        dialogs = [op for op in self.bridge.poll() if op["op"] == "dialog"]
+        self.assertEqual(len(dialogs), 1)
+        self.assertEqual(dialogs[0]["kind"], "alert")
+        self.assertEqual(dialogs[0]["title"], "NTEWiz")
+        self.assertEqual(dialogs[0]["message"], trackers.SITES["ntewiz"]["disabled"])
+
     def test_import_drop_is_only_for_sites_that_support_it(self):
         exports = [{"payload": '{"banner": {"id": "a"}}'}]
         self.ops(("finished", {"exports": exports, "achievement_path": None}))

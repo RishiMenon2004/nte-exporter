@@ -1,7 +1,8 @@
 """The tracker sites offered as buttons in the Captured header.
 
 The page only passes a site's key, so it can't open anything not listed here. A
-site with "drop" can receive a capture directly; see docs/direct-import.md.
+site with "drop" can receive a capture directly; see docs/direct-import.md. A
+site with "disabled" shows that message instead of opening.
 """
 
 from __future__ import annotations
@@ -23,5 +24,9 @@ SITES = {
             "skip_banners": (MYSTERY_BOX_BANNER_ID,),  # The site doesn't track these.
         },
     },
-    "ntewiz": {"label": "NTEWiz", "url": "https://www.ntewiz.xyz/"},
+    "ntewiz": {
+        "label": "NTEWiz",
+        "url": "https://www.ntewiz.xyz/",
+        "disabled": "NTEWiz is temporarily disabled until it's back up.",
+    },
 }

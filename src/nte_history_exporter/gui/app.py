@@ -104,7 +104,10 @@ class Bridge:
             "text": TEXT,
             "version": EXPORTER_VERSION,
             "backends": BACKENDS,
-            "trackers": [{"key": key, "label": site["label"]} for key, site in trackers.SITES.items()],
+            "trackers": [
+                {"key": key, "label": site["label"], "disabled": site.get("disabled")}
+                for key, site in trackers.SITES.items()
+            ],
         }
 
     def ready(self) -> None:
@@ -186,7 +189,10 @@ class Bridge:
 
     def import_drop(self, key: str) -> dict | None:
         """What the page should encrypt and upload for this tracker, if anything."""
-        drop = trackers.SITES.get(key, {}).get("drop")
+        site = trackers.SITES.get(key, {})
+        if site.get("disabled"):
+            return None
+        drop = site.get("drop")
         with self._lock:
             payloads = list(self._payloads)
         if not drop or not payloads:
@@ -211,6 +217,16 @@ class Bridge:
         """
         site = trackers.SITES.get(key)
         if not site:
+            return
+        if site.get("disabled"):
+            with self._lock:
+                self._emit(
+                    "dialog",
+                    kind="alert",
+                    title=site["label"],
+                    message=site["disabled"],
+                    buttons=[{"label": TEXT["dismiss"], "value": "dismiss", "primary": True, "cancel": True}],
+                )
             return
         if fragment and "drop" in site:
             webbrowser.open(f"{site['drop']['open_url']}#{fragment}")

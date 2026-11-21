@@ -48,9 +48,13 @@ function buildBackends(backends) {
 function buildTrackers(trackers) {
   const group = $("trackers");
   group.style.display = "contents";
-  for (const { key, label } of trackers) {
-    const button = el("button", "link-pill", `${label} ↗`);
+  for (const { key, label, disabled } of trackers) {
+    const button = el("button", "link-pill", disabled ? label : `${label} ↗`);
     button.type = "button";
+    if (disabled) {
+      button.setAttribute("aria-disabled", "true");
+      button.title = disabled;
+    }
     button.addEventListener("click", () => openTracker(key, button));
     group.append(button);
   }
@@ -214,6 +218,10 @@ async function uploadDrop({ upload_url, plaintext }) {
 }
 
 async function openTracker(key, button) {
+  if (button.getAttribute("aria-disabled") === "true") {
+    await api.open_tracker(key, null);
+    return;
+  }
   button.disabled = true;
   try {
     const drop = await api.import_drop(key);

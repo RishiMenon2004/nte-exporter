@@ -243,12 +243,16 @@ button {
   white-space: nowrap;
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
-.link-pill:hover:not(:disabled) {
+.link-pill:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--pink);
 }
 .link-pill:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+.link-pill[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .well {
@@ -476,7 +480,7 @@ input[type="text"]::placeholder {
 /* Text on pink or red: white, with the black stroke painted under the fill. */
 .version,
 .update:hover:not(:disabled),
-.link-pill:hover:not(:disabled),
+.link-pill:hover:not(:disabled):not([aria-disabled="true"]),
 .segmented button[aria-checked="true"],
 .pill-primary:not(:disabled),
 .pill-danger:not(:disabled),
